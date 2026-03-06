@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "skills": {
+    "dart-best-practices": {
+      "source": "kevmoo/dash_skills",
+      "sourceType": "github",
+      "computedHash": "c1105a6b1d0a41c9e70eeeb6b1e857b81344ad224a339198dae0749e3b07988c"
+    },
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "computedHash": "6412eb4eb3b91595ebab937f0c69501240e7ba761b3d82510b5cf506ec5c7adc"
+    },
+    "flutter-adaptive-ui": {
+      "source": "madteacher/mad-agents-skills",
+      "sourceType": "github",
+      "computedHash": "8ec5202f5cfed750cc71569edf901994f3dd6985216ab5e10a4444a5407d6e90"
+    },
+    "flutter-animations": {
+      "source": "madteacher/mad-agents-skills",
+      "sourceType": "github",
+      "computedHash": "dcd68fd024e5631a841125645a23c9828158cd76505ba6c019c09b828c04f626"
+    },
+    "flutter-architecture": {
+      "source": "madteacher/mad-agents-skills",
+      "sourceType": "github",
+      "computedHash": "e617b1fb5cadbf9ba7b6daa034762a52ac3227f23bba7dab9878c7b18e1ab035"
+    },
+    "flutter-bloc-development": {
+      "source": "abdelhakrazi/flutter-bloc-clean-architecture-skill",
+      "sourceType": "github",
+      "computedHash": "fed75a2491b12164db8e91166f970b1745bc9df7e746afef1a00a3d3eb4b6060"
+    },
+    "flutter-expert": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "183ca13437c49499c5035b826074bec20e30956235ac8d60fab4c17af0ed2218"
+    },
+    "flutter-testing": {
+      "source": "madteacher/mad-agents-skills",
+      "sourceType": "github",
+      "computedHash": "eede955d2713216f3daf06c85102e305445dc834aaa8546015c88bd272dee5c8"
+    },
+    "flutter-ui-ux": {
+      "source": "ajianaz/skills-collection",
+      "sourceType": "github",
+      "computedHash": "a0fc21d9328f80ab16c3e3463a12f4fd86462bc6370fe0ea016dc06ae1616654"
+    }
+  }
+}
