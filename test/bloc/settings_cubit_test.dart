@@ -3,10 +3,12 @@ import 'package:camera/camera.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
+import 'package:memoir_v1/features/app/bloc/app_cubit.dart';
 import 'package:memoir_v1/features/settings/bloc/settings_cubit.dart';
 import 'package:memoir_v1/features/settings/bloc/settings_state.dart';
 import 'package:memoir_v1/features/settings/data/services/camera_test_service.dart';
 import 'package:memoir_v1/features/settings/data/services/printer_test_service.dart';
+import 'package:memoir_v1/features/startup/data/repositories/startup_repository.dart';
 import 'package:memoir_v1/shared/data/datasources/storage_service.dart';
 
 // ─── Mocks ──────────────────────────────────────────────────────────
@@ -17,15 +19,23 @@ class MockPrinterTestService extends Mock implements PrinterTestService {}
 
 class MockStorageService extends Mock implements StorageService {}
 
+class MockStartupRepository extends Mock implements StartupRepository {}
+
+class MockAppCubit extends Mock implements AppCubit {}
+
 void main() {
   late MockCameraTestService mockCameraService;
   late MockPrinterTestService mockPrinterService;
   late MockStorageService mockStorageService;
+  late MockStartupRepository mockStartupRepository;
+  late MockAppCubit mockAppCubit;
 
   setUp(() {
     mockCameraService = MockCameraTestService();
     mockPrinterService = MockPrinterTestService();
     mockStorageService = MockStorageService();
+    mockStartupRepository = MockStartupRepository();
+    mockAppCubit = MockAppCubit();
 
     // Stub dispose methods — called by SettingsCubit.close().
     when(() => mockCameraService.dispose()).thenAnswer((_) async {});
@@ -35,12 +45,15 @@ void main() {
     when(() => mockStorageService.hasDefaultPrinter).thenReturn(false);
     when(() => mockStorageService.defaultPrinterName).thenReturn(null);
     when(() => mockStorageService.defaultPrinterMac).thenReturn(null);
+
   });
 
   SettingsCubit buildCubit() => SettingsCubit(
         cameraService: mockCameraService,
         printerService: mockPrinterService,
         storageService: mockStorageService,
+        startupRepository: mockStartupRepository,
+        appCubit: mockAppCubit,
       );
 
   group('SettingsCubit', () {
@@ -56,7 +69,8 @@ void main() {
       blocTest<SettingsCubit, SettingsState>(
         'emits [CameraTestInProgress, CameraTestSuccess] on success',
         build: () {
-          when(() => mockCameraService.initialize()).thenAnswer((_) async {});
+          when(() => mockCameraService.initialize())
+              .thenAnswer((_) async {});
           return buildCubit();
         },
         act: (cubit) => cubit.startCameraTest(),
@@ -85,9 +99,8 @@ void main() {
       blocTest<SettingsCubit, SettingsState>(
         'emits [CameraTestInProgress, CameraTestError] on generic exception',
         build: () {
-          when(
-            () => mockCameraService.initialize(),
-          ).thenThrow(Exception('unexpected'));
+          when(() => mockCameraService.initialize())
+              .thenThrow(Exception('unexpected'));
           return buildCubit();
         },
         act: (cubit) => cubit.startCameraTest(),
@@ -122,7 +135,7 @@ void main() {
       blocTest<SettingsCubit, SettingsState>(
         'emits [PrinterScanInProgress, PrinterScanComplete] on success',
         build: () {
-          when(() => mockPrinterService.scanPrinters()).thenAnswer(
+          when(() => mockPrinterService.scanBluetoothPrinters()).thenAnswer(
             (_) async => [
               const PrinterInfo(
                 name: 'Test Printer',
@@ -147,18 +160,51 @@ void main() {
         'emits [PrinterScanInProgress, PrinterTestError] on failure',
         build: () {
           when(
-            () => mockPrinterService.scanPrinters(),
+            () => mockPrinterService.scanBluetoothPrinters(),
           ).thenThrow(Exception('BLE unavailable'));
           return buildCubit();
         },
         act: (cubit) => cubit.scanPrinters(),
         expect: () => [
           const PrinterScanInProgress(),
-          const PrinterTestError(
-            message: 'Scan gagal: Exception: BLE unavailable',
-            printers: [],
+          isA<PrinterTestError>().having(
+            (s) => s.message,
+            'message',
+            contains('BLE unavailable'),
           ),
         ],
+      );
+    });
+
+    group('selectPrinter', () {
+      const printer = PrinterInfo(
+        name: 'Test Printer',
+        address: 'AA:BB:CC:DD:EE:FF',
+      );
+
+      blocTest<SettingsCubit, SettingsState>(
+        'saves printer and emits PrinterSaved',
+        build: () {
+          when(
+            () => mockStorageService.setDefaultPrinter(
+              name: any(named: 'name'),
+              mac: any(named: 'mac'),
+              connectionType: any(named: 'connectionType'),
+            ),
+          ).thenAnswer((_) async {});
+          return buildCubit();
+        },
+        act: (cubit) => cubit.selectPrinter(printer),
+        expect: () => [const PrinterSaved(printer: printer)],
+        verify: (_) {
+          verify(
+            () => mockStorageService.setDefaultPrinter(
+              name: 'Test Printer',
+              mac: 'AA:BB:CC:DD:EE:FF',
+              connectionType: 'bluetooth',
+            ),
+          ).called(1);
+        },
       );
     });
 
@@ -176,11 +222,10 @@ void main() {
           ).thenAnswer((_) async {});
           return buildCubit();
         },
-        seed: () => const PrinterScanComplete(printers: [printer]),
         act: (cubit) => cubit.testPrint(printer),
         expect: () => [
-          const PrinterTestInProgress(printers: [printer]),
-          const PrinterTestSuccess(printers: [printer]),
+          const PrinterTestInProgress(printer: printer),
+          const PrinterTestSuccess(printer: printer),
         ],
       );
 
@@ -192,13 +237,12 @@ void main() {
           ).thenThrow(Exception('Print failed'));
           return buildCubit();
         },
-        seed: () => const PrinterScanComplete(printers: [printer]),
         act: (cubit) => cubit.testPrint(printer),
         expect: () => [
-          const PrinterTestInProgress(printers: [printer]),
+          const PrinterTestInProgress(printer: printer),
           const PrinterTestError(
             message: 'Test print gagal: Exception: Print failed',
-            printers: [printer],
+            printer: printer,
           ),
         ],
       );
@@ -206,47 +250,17 @@ void main() {
 
     // ─── Default Printer ─────────────────────────────────────────
 
-    group('saveDefaultPrinter', () {
-      const printer = PrinterInfo(
-        name: 'EPPOS EP600',
-        address: 'AA:BB:CC:DD:EE:FF',
-      );
-
-      blocTest<SettingsCubit, SettingsState>(
-        'saves printer to storage and re-emits state',
-        build: () {
-          when(
-            () => mockStorageService.setDefaultPrinter(
-              name: any(named: 'name'),
-              mac: any(named: 'mac'),
-            ),
-          ).thenAnswer((_) async {});
-          return buildCubit();
-        },
-        seed: () => const PrinterScanComplete(printers: [printer]),
-        act: (cubit) => cubit.saveDefaultPrinter(printer),
-        verify: (_) {
-          verify(
-            () => mockStorageService.setDefaultPrinter(
-              name: 'EPPOS EP600',
-              mac: 'AA:BB:CC:DD:EE:FF',
-            ),
-          ).called(1);
-        },
-      );
-    });
-
     group('clearDefaultPrinter', () {
       blocTest<SettingsCubit, SettingsState>(
-        'clears saved printer from storage',
+        'clears saved printer and emits SettingsInitial',
         build: () {
           when(
             () => mockStorageService.clearDefaultPrinter(),
           ).thenAnswer((_) async {});
           return buildCubit();
         },
-        seed: () => const PrinterScanComplete(printers: []),
         act: (cubit) => cubit.clearDefaultPrinter(),
+        expect: () => [const SettingsInitial()],
         verify: (_) {
           verify(() => mockStorageService.clearDefaultPrinter()).called(1);
         },

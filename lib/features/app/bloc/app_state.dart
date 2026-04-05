@@ -39,5 +39,10 @@ final class AppLocked extends AppState {
 
 /// App ready — paired and templates synced. GoRouter handles screens.
 final class AppReady extends AppState {
-  const AppReady();
+  final List<dynamic> templates;
+
+  const AppReady({this.templates = const []});
+
+  @override
+  List<Object?> get props => [templates];
 }

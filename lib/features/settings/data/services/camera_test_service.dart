@@ -2,10 +2,8 @@ import 'package:camera/camera.dart';
 
 /// Service wrapper for the camera plugin.
 ///
-/// Provides camera initialization, controller access, and cleanup
-/// for the device diagnostic camera test.
-///
-/// Per PRD-05 FEAT-MR-10: Validate camera access and preview.
+/// Always uses front camera (selfie/mirror) at the highest available
+/// resolution. No user-configurable direction or resolution.
 class CameraTestService {
   CameraController? _controller;
   List<CameraDescription> _cameras = [];
@@ -19,12 +17,17 @@ class CameraTestService {
   /// Available cameras on the device.
   List<CameraDescription> get cameras => _cameras;
 
-  /// Initialize the camera.
+  /// Initialize the front camera at max resolution.
   ///
-  /// Discovers available cameras, then initializes the first rear camera
-  /// (or first available) at medium resolution.
+  /// Discovers available cameras, selects front camera (fallback to first),
+  /// and uses [ResolutionPreset.max] for best quality.
   Future<void> initialize() async {
-    _cameras = await availableCameras();
+    // Dispose previous controller if any.
+    await dispose();
+
+    if (_cameras.isEmpty) {
+      _cameras = await availableCameras();
+    }
 
     if (_cameras.isEmpty) {
       throw CameraException(
@@ -33,15 +36,14 @@ class CameraTestService {
       );
     }
 
-    // Prefer rear camera (default for photobooth), fallback to first available.
     final selected = _cameras.firstWhere(
-      (c) => c.lensDirection == CameraLensDirection.back,
+      (c) => c.lensDirection == CameraLensDirection.front,
       orElse: () => _cameras.first,
     );
 
     _controller = CameraController(
       selected,
-      ResolutionPreset.medium,
+      ResolutionPreset.max,
       enableAudio: false,
     );
 

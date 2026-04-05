@@ -1,72 +1,118 @@
+import 'dart:convert';
+
 import 'package:equatable/equatable.dart';
 
 /// Kiosk configuration model.
 ///
-/// Matches the response shape from `GET /kiosk/me`.
-/// Per PRD-05: cached in Hive `kioskConfigBox`.
+/// Maps to API responses:
+/// - POST /kiosk/pair → data.kioskConfig
+/// - GET /kiosk/me → data.kiosk + subscription info
+///
+/// Field names match backend API exactly.
 class KioskConfig extends Equatable {
   final String id;
   final String name;
   final String ownerId;
-  final String status; // 'ACTIVE', 'INACTIVE', 'EXPIRED'
-  final PricingConfig pricing;
+  final bool isActive;
+  final int priceBaseSession;
+  final int pricePerExtraPrint;
+  final int priceDigitalCopy;
+  final String? subscriptionStatus;
+  final int? gracePeriodDaysRemaining;
+  final String? sessionPreviewUrl;
 
   const KioskConfig({
     required this.id,
     required this.name,
     required this.ownerId,
-    required this.status,
-    required this.pricing,
+    this.isActive = true,
+    required this.priceBaseSession,
+    required this.pricePerExtraPrint,
+    required this.priceDigitalCopy,
+    this.subscriptionStatus,
+    this.gracePeriodDaysRemaining,
+    this.sessionPreviewUrl,
   });
 
-  factory KioskConfig.fromJson(Map<String, dynamic> json) => KioskConfig(
+  /// Parse from POST /kiosk/pair → data.kioskConfig
+  factory KioskConfig.fromPairJson(Map<String, dynamic> json) => KioskConfig(
     id: json['id'] as String,
     name: json['name'] as String,
     ownerId: json['ownerId'] as String,
-    status: json['status'] as String,
-    pricing: PricingConfig.fromJson(json['pricing'] as Map<String, dynamic>),
+    priceBaseSession: json['priceBaseSession'] as int,
+    pricePerExtraPrint: json['pricePerExtraPrint'] as int,
+    priceDigitalCopy: json['priceDigitalCopy'] as int,
   );
 
+  /// Parse from GET /kiosk/me → full response data
+  factory KioskConfig.fromMeJson(Map<String, dynamic> json) {
+    final kiosk = json['kiosk'] as Map<String, dynamic>;
+    return KioskConfig(
+      id: kiosk['id'] as String,
+      name: kiosk['name'] as String,
+      ownerId: kiosk['ownerId'] as String? ?? '',
+      isActive: kiosk['isActive'] as bool? ?? true,
+      priceBaseSession: kiosk['priceBaseSession'] as int,
+      pricePerExtraPrint: kiosk['pricePerExtraPrint'] as int,
+      priceDigitalCopy: kiosk['priceDigitalCopy'] as int,
+      subscriptionStatus: json['subscriptionStatus'] as String?,
+      gracePeriodDaysRemaining: json['gracePeriodDaysRemaining'] as int?,
+      sessionPreviewUrl: json['sessionPreviewUrl'] as String?,
+    );
+  }
+
+  /// Parse from cached JSON string.
+  factory KioskConfig.fromJsonString(String jsonString) {
+    final json = jsonDecode(jsonString) as Map<String, dynamic>;
+    return KioskConfig(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      ownerId: json['ownerId'] as String,
+      isActive: json['isActive'] as bool? ?? true,
+      priceBaseSession: json['priceBaseSession'] as int,
+      pricePerExtraPrint: json['pricePerExtraPrint'] as int,
+      priceDigitalCopy: json['priceDigitalCopy'] as int,
+      subscriptionStatus: json['subscriptionStatus'] as String?,
+      gracePeriodDaysRemaining: json['gracePeriodDaysRemaining'] as int?,
+      sessionPreviewUrl: json['sessionPreviewUrl'] as String?,
+    );
+  }
+
+  /// Serialize to JSON map.
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
     'ownerId': ownerId,
-    'status': status,
-    'pricing': pricing.toJson(),
+    'isActive': isActive,
+    'priceBaseSession': priceBaseSession,
+    'pricePerExtraPrint': pricePerExtraPrint,
+    'priceDigitalCopy': priceDigitalCopy,
+    'subscriptionStatus': subscriptionStatus,
+    'gracePeriodDaysRemaining': gracePeriodDaysRemaining,
+    'sessionPreviewUrl': sessionPreviewUrl,
   };
 
-  @override
-  List<Object?> get props => [id, name, ownerId, status, pricing];
-}
+  /// Serialize to JSON string for storage.
+  String toJsonString() => jsonEncode(toJson());
 
-/// Pricing configuration for a kiosk.
-class PricingConfig extends Equatable {
-  final int basePrintPrice;
-  final int additionalPrintPrice;
-  final int digitalCopyPrice;
-
-  const PricingConfig({
-    required this.basePrintPrice,
-    required this.additionalPrintPrice,
-    required this.digitalCopyPrice,
-  });
-
-  factory PricingConfig.fromJson(Map<String, dynamic> json) => PricingConfig(
-    basePrintPrice: json['basePrintPrice'] as int,
-    additionalPrintPrice: json['additionalPrintPrice'] as int,
-    digitalCopyPrice: json['digitalCopyPrice'] as int,
-  );
-
-  Map<String, dynamic> toJson() => {
-    'basePrintPrice': basePrintPrice,
-    'additionalPrintPrice': additionalPrintPrice,
-    'digitalCopyPrice': digitalCopyPrice,
-  };
+  /// Whether this kiosk can operate (active + subscription OK).
+  bool get canOperate =>
+      isActive &&
+      (subscriptionStatus == null ||
+          subscriptionStatus == 'ACTIVE' ||
+          subscriptionStatus == 'GRACE_PERIOD');
 
   @override
   List<Object?> get props => [
-    basePrintPrice,
-    additionalPrintPrice,
-    digitalCopyPrice,
+    id,
+    name,
+    ownerId,
+    isActive,
+    priceBaseSession,
+    pricePerExtraPrint,
+    priceDigitalCopy,
+    subscriptionStatus,
+    gracePeriodDaysRemaining,
+    sessionPreviewUrl,
   ];
 }

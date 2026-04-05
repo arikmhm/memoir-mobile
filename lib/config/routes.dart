@@ -6,11 +6,19 @@ import '../di.dart';
 import '../features/app/bloc/app_cubit.dart';
 import '../features/app/bloc/app_state.dart';
 import '../features/pairing/view/pairing_screen.dart';
+import '../features/session/bloc/processing_cubit.dart';
+import '../shared/data/models/template.dart';
 import '../features/session/view/screensaver_screen.dart';
 import '../features/session/view/photo_session_screen.dart';
+import '../features/session/view/preview_screen.dart';
+import '../features/session/view/confirmation_screen.dart';
+import '../features/session/view/processing_screen.dart';
 import '../features/session/view/select_template_screen.dart';
+import '../features/session/view/thank_you_screen.dart';
 import '../features/settings/bloc/settings_cubit.dart';
 import '../features/settings/view/settings_screen.dart';
+import '../features/startup/bloc/startup_cubit.dart';
+import '../features/startup/view/startup_screen.dart';
 
 /// GoRouter route definitions for memoir. Mobile Runner.
 ///
@@ -44,9 +52,17 @@ class AppRouter {
         return null;
       }
 
-      // If ready and still on pairing, go to screensaver
-      if (appState is AppReady && location == '/pairing') {
-        return '/screensaver';
+      // If startup in progress, redirect to startup screen
+      if (appState is AppStartup) {
+        if (location != '/startup') return '/startup';
+        return null;
+      }
+
+      // If ready, redirect away from pairing/startup to screensaver
+      if (appState is AppReady) {
+        if (location == '/pairing' || location == '/startup') {
+          return '/screensaver';
+        }
       }
 
       return null;
@@ -56,6 +72,13 @@ class AppRouter {
       GoRoute(
         path: '/pairing',
         builder: (context, state) => const PairingScreen(),
+      ),
+      GoRoute(
+        path: '/startup',
+        builder: (context, state) => BlocProvider<StartupCubit>(
+          create: (_) => sl<StartupCubit>(),
+          child: const StartupScreen(),
+        ),
       ),
       GoRoute(
         path: '/screensaver',
@@ -70,6 +93,59 @@ class AppRouter {
         builder: (context, state) => PhotoSessionScreen(
           templateId: state.pathParameters['templateId'] ?? '',
         ),
+      ),
+      GoRoute(
+        path: '/preview/:templateId',
+        builder: (context, state) {
+          final photos = state.extra as Map<int, String>? ?? {};
+          return PreviewScreen(
+            templateId: state.pathParameters['templateId'] ?? '',
+            capturedPhotos: photos,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/confirmation/:templateId',
+        builder: (context, state) {
+          final photos = state.extra as Map<int, String>? ?? {};
+          return ConfirmationScreen(
+            templateId: state.pathParameters['templateId'] ?? '',
+            capturedPhotos: photos,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/processing',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          return BlocProvider<ProcessingCubit>(
+            create: (_) {
+              final cubit = sl<ProcessingCubit>();
+              cubit.startProcessing(
+                template: extra['template'] as Template,
+                capturedPhotos:
+                    extra['capturedPhotos'] as Map<int, String>? ?? {},
+                paymentMethod: extra['paymentMethod'] as String? ?? 'CASH',
+                printQty: extra['printQty'] as int? ?? 1,
+                hasDigitalCopy:
+                    extra['hasDigitalCopy'] as bool? ?? false,
+                totalAmount: extra['totalAmount'] as int? ?? 0,
+              );
+              return cubit;
+            },
+            child: const ProcessingScreen(),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/thank-you',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          return ThankYouScreen(
+            transactionId: extra['transactionId'] as String?,
+            hasDigitalCopy: extra['hasDigitalCopy'] as bool? ?? false,
+          );
+        },
       ),
       GoRoute(
         path: '/settings',

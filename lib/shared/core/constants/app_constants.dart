@@ -12,7 +12,7 @@ class AppConstants {
   // Timer Defaults (in seconds)
   static const int retakeCountdownDefault = 5;
   static const int paymentTimeoutDefault = 300; // 5 minutes
-  static const int thankYouDurationDefault = 10;
+  static const int thankYouDurationDefault = 300; // 5 minutes
   static const int idleTimeoutDefault = 60;
 
   // Photo Session

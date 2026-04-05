@@ -1,14 +1,22 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:video_player/video_player.dart';
 
+import '../../../di.dart';
 import '../../../shared/core/theme/app_colors.dart';
 import '../../../shared/core/theme/app_spacing.dart';
+import '../../../shared/data/datasources/storage_service.dart';
 
-/// Screensaver screen — attract/idle screen for the kiosk.
+/// Screensaver / attract-mode screen for the kiosk.
 ///
-/// Per PRD-05 FEAT-MR-03: displays image/video. Tap to proceed.
-/// Per PRD-05 FEAT-MR-10: hidden access to Settings (Operator)
-/// via 5x tap in < 2 seconds on the bottom-left corner.
+/// Supports three modes:
+/// - 'default': memoir. logo with pulsing CTA (original)
+/// - 'image': fullscreen background image
+/// - 'video': looping video background
+///
+/// Mode is read from StorageService on init and on return from settings.
 class ScreensaverScreen extends StatefulWidget {
   const ScreensaverScreen({super.key});
 
@@ -16,26 +24,88 @@ class ScreensaverScreen extends StatefulWidget {
   State<ScreensaverScreen> createState() => _ScreensaverScreenState();
 }
 
-class _ScreensaverScreenState extends State<ScreensaverScreen> {
-  /// Tracks timestamps of recent taps on the hidden access zone.
+class _ScreensaverScreenState extends State<ScreensaverScreen>
+    with SingleTickerProviderStateMixin {
   final List<DateTime> _hiddenTaps = [];
 
-  /// Number of taps required to access settings.
   static const int _requiredTaps = 5;
-
-  /// Maximum duration window for all required taps.
   static const Duration _tapWindow = Duration(seconds: 2);
+
+  late final AnimationController _pulseController;
+  late final Animation<double> _pulseAnimation;
+
+  late final StorageService _storage;
+  late String _type;
+  String? _filePath;
+  VideoPlayerController? _videoController;
+
+  @override
+  void initState() {
+    super.initState();
+    _storage = sl<StorageService>();
+    _storage.clearSessionTimer();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+    _loadConfig();
+  }
+
+  void _loadConfig() {
+    final type = _storage.screensaverType;
+    final path = _storage.screensaverFilePath;
+
+    // Validate file exists, fallback to default
+    if ((type == 'image' || type == 'video') &&
+        (path == null || !File(path).existsSync())) {
+      _type = 'default';
+      _filePath = null;
+      return;
+    }
+
+    _type = type;
+    _filePath = path;
+
+    if (_type == 'video' && _filePath != null) {
+      _initVideo();
+    }
+  }
+
+  Future<void> _initVideo() async {
+    _videoController?.dispose();
+    _videoController = VideoPlayerController.file(File(_filePath!));
+    await _videoController!.initialize();
+    _videoController!.setLooping(true);
+    _videoController!.setVolume(0);
+    _videoController!.play();
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _videoController?.dispose();
+    super.dispose();
+  }
 
   void _onHiddenTap() {
     final now = DateTime.now();
-
-    // Remove taps older than the window.
     _hiddenTaps.removeWhere((t) => now.difference(t) > _tapWindow);
     _hiddenTaps.add(now);
 
     if (_hiddenTaps.length >= _requiredTaps) {
       _hiddenTaps.clear();
-      context.push('/settings');
+      context.push('/settings').then((_) {
+        // Reload config when returning from settings
+        if (mounted) {
+          _videoController?.dispose();
+          _videoController = null;
+          setState(() => _loadConfig());
+        }
+      });
     }
   }
 
@@ -44,42 +114,56 @@ class _ScreensaverScreenState extends State<ScreensaverScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Main screensaver content — tap to start session
+          // ── Background layer ──
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () {
-              context.go('/select-template');
-            },
-            child: Container(
-              width: double.infinity,
-              height: double.infinity,
-              color: AppColors.surface,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'memoir.',
-                      style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    Text(
-                      'Tap untuk mulai',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            onTap: () => context.go('/select-template'),
+            child: SizedBox.expand(
+              child: switch (_type) {
+                'image' => _ImageBackground(filePath: _filePath!),
+                'video' => _VideoBackground(controller: _videoController),
+                _ => _DefaultBackground(
+                    pulseAnimation: _pulseAnimation,
+                  ),
+              },
             ),
           ),
 
-          // Hidden access zone — bottom-left corner, invisible 80×80 area.
-          // Per PRD-05 FEAT-MR-10: 5x tap within 2 seconds → Settings.
+          // ── Pulsing CTA overlay (for image/video modes) ──
+          if (_type == 'image' || _type == 'video')
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 80,
+              child: IgnorePointer(
+                child: Center(
+                  child: FadeTransition(
+                    opacity: _pulseAnimation,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md,
+                        vertical: AppSpacing.sm,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: const Text(
+                        'TAP UNTUK MULAI',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          letterSpacing: 3,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          // ── Hidden access zone ──
           Positioned(
             left: 0,
             bottom: 0,
@@ -90,6 +174,101 @@ class _ScreensaverScreenState extends State<ScreensaverScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Default background (memoir. logo) ──────────────────────────
+
+class _DefaultBackground extends StatelessWidget {
+  final Animation<double> pulseAnimation;
+
+  const _DefaultBackground({required this.pulseAnimation});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return ColoredBox(
+      color: AppColors.surface,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'memoir.',
+              style: theme.textTheme.displayLarge?.copyWith(
+                fontWeight: FontWeight.w300,
+                letterSpacing: 4,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Container(
+              width: 40,
+              height: 1,
+              color: AppColors.border,
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            FadeTransition(
+              opacity: pulseAnimation,
+              child: Text(
+                'TAP UNTUK MULAI',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary,
+                  letterSpacing: 3,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Image background ───────────────────────────────────────────
+
+class _ImageBackground extends StatelessWidget {
+  final String filePath;
+
+  const _ImageBackground({required this.filePath});
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.file(
+      File(filePath),
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      errorBuilder: (_, _, _) => const _DefaultBackground(
+        pulseAnimation: AlwaysStoppedAnimation(1.0),
+      ),
+    );
+  }
+}
+
+// ─── Video background ───────────────────────────────────────────
+
+class _VideoBackground extends StatelessWidget {
+  final VideoPlayerController? controller;
+
+  const _VideoBackground({this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    if (controller == null || !controller!.value.isInitialized) {
+      return const ColoredBox(color: Colors.black);
+    }
+
+    return FittedBox(
+      fit: BoxFit.cover,
+      child: SizedBox(
+        width: controller!.value.size.width,
+        height: controller!.value.size.height,
+        child: VideoPlayer(controller!),
       ),
     );
   }

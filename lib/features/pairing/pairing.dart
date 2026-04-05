@@ -3,3 +3,4 @@ export 'bloc/pairing_state.dart';
 export 'data/datasources/pairing_datasource.dart';
 export 'data/repositories/pairing_repository.dart';
 export 'view/pairing_screen.dart';
+export 'view/widgets/pairing_code_input.dart';

@@ -1,12 +1,18 @@
 /// API configuration constants.
 ///
 /// Endpoint paths match PRD-05 Section 7 (identical to PRD-04).
-/// Base URL is placeholder — will be configured per environment.
+/// Base URL configurable via --dart-define=API_BASE_URL=...
 class ApiConstants {
   ApiConstants._();
 
-  // Base URL (placeholder — override via environment config)
-  static const String baseUrl = 'https://api.memoir.local/api/v1';
+  // Base URL — override via: flutter run --dart-define=API_BASE_URL=https://...
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://backend-memoir.vercel.app/api/v1',
+  );
+
+  // Mock mode — override via: flutter run --dart-define=USE_MOCK=true
+  static const bool useMock = bool.fromEnvironment('USE_MOCK');
 
   // Timeouts
   static const Duration connectTimeout = Duration(seconds: 10);

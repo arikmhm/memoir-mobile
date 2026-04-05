@@ -3,17 +3,14 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../shared/core/theme/app_colors.dart';
 import '../../../shared/core/theme/app_spacing.dart';
-import '../../../shared/ui/widgets/app_loading.dart';
 import '../../app/bloc/app_cubit.dart';
 import '../bloc/pairing_cubit.dart';
 import '../bloc/pairing_state.dart';
+import 'widgets/pairing_code_input.dart';
 
 /// Pairing screen — 6-digit code input for device pairing.
 ///
-/// Per PRD-05 FEAT-MR-01:
-/// - Text field for 6-digit code
-/// - Submit button
-/// - Loading/error/success states
+/// Light monochrome, receipt aesthetic. Tipografi bersih, spacing lega.
 class PairingScreen extends StatefulWidget {
   const PairingScreen({super.key});
 
@@ -22,107 +19,178 @@ class PairingScreen extends StatefulWidget {
 }
 
 class _PairingScreenState extends State<PairingScreen> {
-  final _codeController = TextEditingController();
+  final _inputKey = GlobalKey<PairingCodeInputState>();
+  String _currentCode = '';
 
-  @override
-  void dispose() {
-    _codeController.dispose();
-    super.dispose();
+  bool get _isCodeComplete => _currentCode.length == 6;
+
+  void _submitCode() {
+    if (_isCodeComplete) {
+      context.read<PairingCubit>().submitPairingCode(_currentCode);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       body: SafeArea(
         child: BlocConsumer<PairingCubit, PairingState>(
           listener: (context, state) {
             if (state is PairingSuccess) {
-              // Notify AppCubit that pairing is complete
               context.read<AppCubit>().onPairingComplete();
             }
             if (state is PairingError) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(state.message),
-                  backgroundColor: AppColors.error,
-                ),
-              );
+              _inputKey.currentState?.clear();
+              _currentCode = '';
             }
           },
           builder: (context, state) {
-            if (state is PairingLoading) {
-              return const AppLoading(message: 'Memproses pairing...');
-            }
+            final isLoading = state is PairingLoading;
+            final isError = state is PairingError;
+            final isSuccess = state is PairingSuccess;
 
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.screenHorizontal,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Title
-                    Text(
-                      'memoir.',
-                      style: Theme.of(context).textTheme.displayMedium
-                          ?.copyWith(fontWeight: FontWeight.bold),
+            return Stack(
+              children: [
+                Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.screenHorizontal,
+                      vertical: AppSpacing.screenVertical,
                     ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      'Mobile Runner',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xxl),
-
-                    // Instructions
-                    Text(
-                      'Masukkan 6-digit kode pairing dari Owner Dashboard',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // Code input
-                    SizedBox(
-                      width: 300,
-                      child: TextField(
-                        controller: _codeController,
-                        keyboardType: TextInputType.number,
-                        maxLength: 6,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineMedium,
-                        decoration: const InputDecoration(
-                          hintText: '______',
-                          counterText: '',
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // ── Brand ──
+                        Text(
+                          'memoir.',
+                          style: theme.textTheme.displayLarge?.copyWith(
+                            fontWeight: FontWeight.w300,
+                            letterSpacing: 4,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          'MOBILE RUNNER',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            letterSpacing: 6,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xxxl),
 
-                    // Submit button
-                    SizedBox(
-                      width: 300,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          context.read<PairingCubit>().submitPairingCode(
-                            _codeController.text,
-                          );
-                        },
-                        child: const Text('Pair Device'),
-                      ),
+                        // ── Divider ──
+                        Container(
+                          width: 40,
+                          height: 1,
+                          color: AppColors.border,
+                        ),
+                        const SizedBox(height: AppSpacing.xxxl),
+
+                        // ── Title ──
+                        Text(
+                          'PAIRING DEVICE',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            letterSpacing: 3,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+
+                        // ── Instructions ──
+                        Text(
+                          'Masukkan 6-digit kode pairing\ndari Owner Dashboard',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: AppColors.textSecondary,
+                            height: 1.6,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: AppSpacing.xxl),
+
+                        // ── 6-digit code input ──
+                        PairingCodeInput(
+                          key: _inputKey,
+                          enabled: !isLoading && !isSuccess,
+                          hasError: isError,
+                          onChanged: (code) {
+                            setState(() => _currentCode = code);
+                            if (isError) {
+                              context.read<PairingCubit>().reset();
+                            }
+                          },
+                          onCompleted: (_) => _submitCode(),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+
+                        // ── Inline feedback ──
+                        SizedBox(
+                          height: 24,
+                          child: _buildFeedback(context, state),
+                        ),
+                        const SizedBox(height: AppSpacing.xl),
+
+                        // ── Submit button ──
+                        SizedBox(
+                          width: 360,
+                          child: ElevatedButton(
+                            onPressed: isLoading || !_isCodeComplete
+                                ? null
+                                : _submitCode,
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text('PAIR DEVICE'),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
+
+                // Loading overlay
+                if (isLoading)
+                  Positioned.fill(
+                    child: ColoredBox(
+                      color: Colors.white.withValues(alpha: 0.7),
+                    ),
+                  ),
+              ],
             );
           },
         ),
       ),
     );
+  }
+
+  Widget _buildFeedback(BuildContext context, PairingState state) {
+    if (state is PairingError) {
+      return Text(
+        state.message,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: AppColors.error,
+        ),
+      );
+    }
+
+    if (state is PairingSuccess) {
+      return Text(
+        'Pairing berhasil',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: AppColors.success,
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 }

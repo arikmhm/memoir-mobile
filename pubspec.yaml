@@ -32,12 +32,20 @@ dependencies:
   # UI
   google_fonts: ^6.2.1
   cupertino_icons: ^1.0.8
+  qr_flutter: ^4.1.0
+
+  # Image processing
+  image: ^4.5.3
 
   # Dependency Injection
   get_it: ^8.0.3
   permission_handler: ^12.0.1
   print_bluetooth_thermal: ^1.1.9
   esc_pos_utils_plus: ^2.0.4
+  path_provider: ^2.1.5
+  image_picker: ^1.1.2
+  path: ^1.9.1
+  video_player: ^2.11.1
 
 dev_dependencies:
   flutter_test:
@@ -45,6 +53,16 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   bloc_test: ^10.0.0
   mocktail: ^1.0.4
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "AppIcons/appstore.png"
+  min_sdk_android: 21
+  adaptive_icon_foreground: "AppIcons/appstore.png"
+  adaptive_icon_background: "#FFFFFF"
+  remove_alpha_ios: true
 
 flutter:
   uses-material-design: true

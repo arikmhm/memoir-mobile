@@ -7,7 +7,7 @@ import 'app_state.dart';
 ///
 /// Manages the top-level app state:
 /// 1. Check if device token exists
-/// 2. If yes → startup sequence (sync templates, check status)
+/// 2. If yes → startup sequence (status check + template sync)
 /// 3. If no → navigate to pairing screen
 ///
 /// Per PRD-05: No login — auth via device_token from pairing.
@@ -19,9 +19,10 @@ class AppCubit extends Cubit<AppState> {
       super(const AppInitial());
 
   /// Initialize the app — check for existing device token.
+  ///
+  /// Jika token ada → AppStartup → route ke /startup screen
+  /// Jika tidak ada → AppPairing → route ke /pairing screen
   Future<void> initialize() async {
-    emit(const AppStartup());
-
     try {
       final hasToken = await _storageService.hasDeviceToken();
 
@@ -30,18 +31,24 @@ class AppCubit extends Cubit<AppState> {
         return;
       }
 
-      // TODO: Call GET /kiosk/me to check status
-      // TODO: Sync templates via GET /kiosk/templates
-      // For now, go directly to ready state with mock data.
-      emit(const AppReady());
+      // Token exists → navigate to startup screen for
+      // status check + template sync (FEAT-MR-02)
+      emit(const AppStartup());
     } on Exception catch (e) {
       emit(AppLocked(reason: 'Startup failed: $e'));
     }
   }
 
-  /// Called after successful pairing — transition to ready.
+  /// Called after successful pairing — run startup sequence.
+  ///
+  /// Per PRD-05: After pairing, device perlu sync sebelum siap.
   void onPairingComplete() {
-    emit(const AppReady());
+    emit(const AppStartup());
+  }
+
+  /// Called by StartupCubit when startup sequence completes successfully.
+  void onStartupComplete({List<dynamic> templates = const []}) {
+    emit(AppReady(templates: templates));
   }
 
   /// Called when device token is invalidated (401 from backend).

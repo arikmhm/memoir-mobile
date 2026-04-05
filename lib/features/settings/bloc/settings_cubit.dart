@@ -1,29 +1,39 @@
 import 'package:camera/camera.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../shared/core/utils/result.dart';
 import '../../../shared/data/datasources/storage_service.dart';
+import '../../../shared/data/models/template.dart';
+import '../../../shared/data/services/print_channel.dart';
+import '../../app/bloc/app_cubit.dart';
+import '../../startup/data/repositories/startup_repository.dart';
 import '../data/services/camera_test_service.dart';
 import '../data/services/printer_test_service.dart';
 import 'settings_state.dart';
 
-/// Settings Cubit — handles device diagnostic tests and default printer.
+/// Settings Cubit — handles camera test, printer management, and template sync.
 ///
-/// Per PRD-05 FEAT-MR-10:
-/// - Camera test: initialize camera → show preview → report success/error
-/// - Printer test: scan paired printers → test print → report success/error
-/// - Save/load default printer for auto-connect in future sessions
+/// Camera always uses front camera at max resolution (no user config).
+/// Printer list is retained across state transitions so scan results
+/// are never lost when camera states change.
 class SettingsCubit extends Cubit<SettingsState> {
   final CameraTestService _cameraService;
   final PrinterTestService _printerService;
   final StorageService _storageService;
+  final StartupRepository _startupRepository;
+  final AppCubit _appCubit;
 
   SettingsCubit({
     required CameraTestService cameraService,
     required PrinterTestService printerService,
     required StorageService storageService,
+    required StartupRepository startupRepository,
+    required AppCubit appCubit,
   })  : _cameraService = cameraService,
         _printerService = printerService,
         _storageService = storageService,
+        _startupRepository = startupRepository,
+        _appCubit = appCubit,
         super(const SettingsInitial());
 
   /// The camera controller for preview widget access.
@@ -35,12 +45,15 @@ class SettingsCubit extends Cubit<SettingsState> {
     return PrinterInfo(
       name: _storageService.defaultPrinterName ?? '',
       address: _storageService.defaultPrinterMac ?? '',
+      connectionType: PrinterConnectionType.fromKey(
+        _storageService.defaultPrinterConnectionType,
+      ),
     );
   }
 
   // ─── Camera Test ──────────────────────────────────────────────
 
-  /// Start camera diagnostic test.
+  /// Start camera test — front camera, max resolution.
   Future<void> startCameraTest() async {
     emit(const CameraTestInProgress());
 
@@ -69,69 +82,74 @@ class SettingsCubit extends Cubit<SettingsState> {
     emit(const PrinterScanInProgress());
 
     try {
-      final printers = await _printerService.scanPrinters();
+      final printers = await _printerService.scanBluetoothPrinters();
       emit(PrinterScanComplete(printers: printers));
     } on Exception catch (e) {
-      emit(PrinterTestError(message: 'Scan gagal: $e', printers: const []));
+      emit(PrinterTestError(
+        message: 'Scan gagal: $e',
+        printer: savedPrinter ?? const PrinterInfo(name: '', address: ''),
+      ));
     }
   }
 
-  /// Perform a test print on the selected printer.
-  Future<void> testPrint(PrinterInfo printerInfo) async {
-    final currentPrinters = _currentPrinters;
-
-    emit(PrinterTestInProgress(printers: currentPrinters));
+  /// Scan for USB printers connected via OTG.
+  Future<void> scanUsbPrinters() async {
+    emit(const PrinterScanInProgress());
 
     try {
-      await _printerService.testPrint(printerInfo);
-      emit(PrinterTestSuccess(printers: currentPrinters));
+      final printers = await _printerService.scanUsbPrinters();
+      emit(PrinterScanComplete(printers: printers));
     } on Exception catch (e) {
-      emit(
-        PrinterTestError(
-          message: 'Test print gagal: $e',
-          printers: currentPrinters,
-        ),
-      );
+      emit(PrinterTestError(
+        message: 'Scan USB gagal: $e',
+        printer: savedPrinter ?? const PrinterInfo(name: '', address: ''),
+      ));
     }
   }
 
-  // ─── Default Printer ──────────────────────────────────────────
-
-  /// Save printer as default for auto-connect.
-  Future<void> saveDefaultPrinter(PrinterInfo printer) async {
+  /// Select a printer — auto-saves as default.
+  Future<void> selectPrinter(PrinterInfo printer) async {
     await _storageService.setDefaultPrinter(
       name: printer.name,
       mac: printer.address,
+      connectionType: printer.connectionType.key,
     );
-    // Re-emit current state to trigger UI rebuild showing saved printer.
-    final s = state;
-    if (s is PrinterScanComplete) {
-      emit(PrinterScanComplete(printers: s.printers));
-    } else if (s is PrinterTestSuccess) {
-      emit(PrinterTestSuccess(printers: s.printers));
+    emit(PrinterSaved(printer: printer));
+  }
+
+  /// Perform a test print on the saved printer.
+  Future<void> testPrint(PrinterInfo printer) async {
+    emit(PrinterTestInProgress(printer: printer));
+
+    try {
+      await _printerService.testPrint(printer);
+      emit(PrinterTestSuccess(printer: printer));
+    } on Exception catch (e) {
+      emit(PrinterTestError(message: 'Test print gagal: $e', printer: printer));
     }
   }
 
-  /// Clear saved default printer.
+  /// Clear saved default printer and reset printer section.
   Future<void> clearDefaultPrinter() async {
     await _storageService.clearDefaultPrinter();
-    // Re-emit to trigger UI rebuild.
-    final s = state;
-    if (s is PrinterScanComplete) {
-      emit(PrinterScanComplete(printers: s.printers));
-    } else if (s is PrinterTestSuccess) {
-      emit(PrinterTestSuccess(printers: s.printers));
-    }
+    emit(const SettingsInitial());
   }
 
-  /// Extract printer list from current state.
-  List<PrinterInfo> get _currentPrinters {
-    final s = state;
-    if (s is PrinterScanComplete) return s.printers;
-    if (s is PrinterTestInProgress) return s.printers;
-    if (s is PrinterTestSuccess) return s.printers;
-    if (s is PrinterTestError) return s.printers;
-    return const [];
+  // ─── Template Sync ───────────────────────────────────────────
+
+  /// Sync templates from backend and update AppCubit.
+  Future<void> syncTemplates() async {
+    emit(const TemplateSyncInProgress());
+
+    final result = await _startupRepository.syncTemplates();
+
+    switch (result) {
+      case Ok<List<Template>>(:final value):
+        _appCubit.onStartupComplete(templates: value);
+        emit(TemplateSyncSuccess(count: value.length));
+      case Error(:final error):
+        emit(TemplateSyncError(message: error.toString()));
+    }
   }
 
   /// Reset to initial state.

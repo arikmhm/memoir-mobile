@@ -10,7 +10,7 @@ import 'shared/core/theme/app_theme.dart';
 
 /// Root widget for memoir. Mobile Runner.
 ///
-/// Provides BLoC instances and configures Material 3 dark theme.
+/// Provides BLoC instances and configures light monochrome theme.
 class MemoirApp extends StatelessWidget {
   const MemoirApp({super.key});
 
@@ -25,7 +25,7 @@ class MemoirApp extends StatelessWidget {
       child: MaterialApp.router(
         title: 'memoir. Mobile Runner',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.darkTheme,
+        theme: AppTheme.lightTheme,
         routerConfig: sl<AppRouter>().router,
       ),
     );

@@ -3,348 +3,248 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../shared/core/theme/app_colors.dart';
 import '../../../../shared/core/theme/app_spacing.dart';
+import '../../../../shared/data/services/print_channel.dart';
+import '../../../../shared/widgets/memoir_banner.dart';
+import '../../../../shared/widgets/memoir_button.dart';
+import '../../../../shared/widgets/memoir_section_card.dart';
+import '../../../../shared/widgets/memoir_tab_toggle.dart';
 import '../../bloc/settings_cubit.dart';
 import '../../bloc/settings_state.dart';
 
-/// Printer test card section.
+/// Printer section — dashboard card style.
 ///
-/// Shows paired Bluetooth printers, allows test printing,
-/// and saving a default printer for auto-connect.
-class PrinterTestSection extends StatelessWidget {
+/// Custom toggle replaces SegmentedButton. Inline banner replaces SnackBar.
+/// GestureDetector + opacity replaces InkWell ripple.
+class PrinterTestSection extends StatefulWidget {
   const PrinterTestSection({super.key});
+
+  @override
+  State<PrinterTestSection> createState() => _PrinterTestSectionState();
+}
+
+class _PrinterTestSectionState extends State<PrinterTestSection> {
+  PrinterConnectionType _selectedType = PrinterConnectionType.bluetooth;
+
+  // Inline banner state
+  String? _bannerMessage;
+  MemoirBannerType? _bannerType;
+
+  void _showBanner(String message, MemoirBannerType type) {
+    setState(() {
+      _bannerMessage = message;
+      _bannerType = type;
+    });
+  }
+
+  void _dismissBanner() {
+    if (mounted) setState(() => _bannerMessage = null);
+  }
 
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<SettingsCubit, SettingsState>(
-      listenWhen: (previous, current) =>
+      listenWhen: (_, current) =>
           current is PrinterTestSuccess || current is PrinterTestError,
       listener: (context, state) {
         if (state is PrinterTestSuccess) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Test print berhasil!'),
-              backgroundColor: AppColors.success,
-            ),
-          );
+          _showBanner('Test print berhasil!', MemoirBannerType.success);
         }
         if (state is PrinterTestError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: AppColors.error,
-            ),
-          );
+          _showBanner(state.message, MemoirBannerType.error);
         }
       },
-      buildWhen: (previous, current) =>
+      buildWhen: (_, current) =>
           current is SettingsInitial ||
           current is PrinterScanInProgress ||
           current is PrinterScanComplete ||
+          current is PrinterSaved ||
           current is PrinterTestInProgress ||
           current is PrinterTestSuccess ||
           current is PrinterTestError,
       builder: (context, state) {
         final cubit = context.read<SettingsCubit>();
-        final printers = _extractPrinters(state);
         final isScanning = state is PrinterScanInProgress;
-        final isTesting = state is PrinterTestInProgress;
-        final savedPrinter = cubit.savedPrinter;
+        final savedPrinter = _activePrinter(state) ?? cubit.savedPrinter;
+        final isBusy = isScanning || state is PrinterTestInProgress;
 
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceVariant,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                children: [
-                  const Icon(Icons.print_outlined, size: 20),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      'Test Printer',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
+        return MemoirSectionCard(
+          label: 'Printer',
+          subtitle: 'Pilih koneksi, scan printer, lalu test print.',
+          icon: Icons.print_outlined,
+          trailing: _StatusBadge(state: state),
+          children: [
+            // ── Inline banner (replaces SnackBar) ──
+            if (_bannerMessage != null) ...[
+              MemoirBanner(
+                message: _bannerMessage!,
+                type: _bannerType ?? MemoirBannerType.info,
+                onDismiss: _dismissBanner,
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+
+            // ── Connection type toggle ──
+            if (savedPrinter == null) ...[
+              MemoirTabToggle<PrinterConnectionType>(
+                items: const [
+                  MemoirTabItem(
+                    value: PrinterConnectionType.bluetooth,
+                    label: 'Bluetooth',
+                    icon: Icons.bluetooth,
                   ),
-                  _buildStatusBadge(context, state),
+                  MemoirTabItem(
+                    value: PrinterConnectionType.usb,
+                    label: 'USB (OTG)',
+                    icon: Icons.usb,
+                  ),
                 ],
+                selected: _selectedType,
+                onChanged: isBusy
+                    ? null
+                    : (type) => setState(() => _selectedType = type),
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+
+            // ── Saved printer card ──
+            if (savedPrinter != null) ...[
+              _SavedPrinterCard(
+                printer: savedPrinter,
+                isTesting: state is PrinterTestInProgress,
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+
+            // ── Scan button ──
+            if (savedPrinter == null) ...[
+              MemoirButton.filled(
+                label: isScanning
+                    ? 'Scanning...'
+                    : _selectedType == PrinterConnectionType.usb
+                        ? 'Scan USB Printer'
+                        : 'Scan Bluetooth Printer',
+                icon: isScanning
+                    ? null
+                    : _selectedType == PrinterConnectionType.usb
+                        ? Icons.usb
+                        : Icons.bluetooth_searching,
+                isLoading: isScanning,
+                onPressed: isBusy
+                    ? null
+                    : () {
+                        if (_selectedType == PrinterConnectionType.usb) {
+                          cubit.scanUsbPrinters();
+                        } else {
+                          cubit.scanPrinters();
+                        }
+                      },
+              ),
+            ],
+
+            // ── Scan results list ──
+            if (state is PrinterScanComplete) ...[
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                'DITEMUKAN (${state.printers.length})',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                  letterSpacing: 1.0,
+                ),
               ),
               const SizedBox(height: AppSpacing.sm),
-              Text(
-                'Tampilkan device Bluetooth yang sudah di-pair, lalu test print.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
+              if (state.printers.isEmpty)
+                _EmptyState(connectionType: _selectedType)
+              else
+                ...state.printers.map(
+                  (p) => Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                    child: _PrinterSelectTile(
+                      printer: p,
+                      onTap: () => cubit.selectPrinter(p),
                     ),
-              ),
-
-              // Saved default printer card
-              if (savedPrinter != null) ...[
-                const SizedBox(height: AppSpacing.md),
-                _SavedPrinterCard(savedPrinter: savedPrinter),
-              ],
-
-              const SizedBox(height: AppSpacing.md),
-
-              // Scan button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: isScanning || isTesting
-                      ? null
-                      : () => context.read<SettingsCubit>().scanPrinters(),
-                  icon: isScanning
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.bluetooth_searching, size: 18),
-                  label: Text(isScanning ? 'Scanning...' : 'Scan Printer'),
-                ),
-              ),
-
-              // Printer list
-              if (printers != null && printers.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.md),
-                Text(
-                  'Printer Ditemukan (${printers.length})',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                ...printers.map(
-                  (printer) => _PrinterTile(
-                    printer: printer,
-                    isTesting: isTesting,
-                    isDefault: savedPrinter?.address == printer.address,
                   ),
                 ),
-              ],
-
-              // Empty state after scan
-              if (printers != null && printers.isEmpty && !isScanning) ...[
-                const SizedBox(height: AppSpacing.md),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceContainer,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    children: [
-                      const Icon(
-                        Icons.print_disabled,
-                        size: 32,
-                        color: AppColors.textDisabled,
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(
-                        'Tidak ada printer ditemukan',
-                        style:
-                            Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
-                      ),
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        'Pastikan printer Bluetooth sudah dinyalakan dan dipair.',
-                        style:
-                            Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: AppColors.textDisabled,
-                                ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ],
-          ),
+          ],
         );
       },
     );
   }
 
-  List<PrinterInfo>? _extractPrinters(SettingsState state) {
-    if (state is PrinterScanComplete) return state.printers;
-    if (state is PrinterTestInProgress) return state.printers;
-    if (state is PrinterTestSuccess) return state.printers;
-    if (state is PrinterTestError) return state.printers;
+  PrinterInfo? _activePrinter(SettingsState state) {
+    if (state is PrinterSaved) return state.printer;
+    if (state is PrinterTestInProgress) return state.printer;
+    if (state is PrinterTestSuccess) return state.printer;
+    if (state is PrinterTestError) return state.printer;
     return null;
-  }
-
-  Widget _buildStatusBadge(BuildContext context, SettingsState state) {
-    if (state is PrinterTestSuccess) {
-      return Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm,
-          vertical: AppSpacing.xs,
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.success.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.check_circle, color: AppColors.success, size: 14),
-            const SizedBox(width: AppSpacing.xs),
-            Text(
-              'Berhasil',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: AppColors.success,
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (state is PrinterTestError) {
-      return Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm,
-          vertical: AppSpacing.xs,
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.error.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.cancel, color: AppColors.error, size: 14),
-            const SizedBox(width: AppSpacing.xs),
-            Text(
-              'Gagal',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: AppColors.error,
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (state is PrinterScanInProgress || state is PrinterTestInProgress) {
-      return const SizedBox(
-        width: 16,
-        height: 16,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
-    }
-
-    return const SizedBox.shrink();
   }
 }
 
-/// Card showing the currently saved default printer.
-class _SavedPrinterCard extends StatelessWidget {
-  final PrinterInfo savedPrinter;
+// ─── Private widgets ────────────────────────────────────────────────
 
-  const _SavedPrinterCard({required this.savedPrinter});
+class _StatusBadge extends StatelessWidget {
+  final SettingsState state;
+  const _StatusBadge({required this.state});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: AppColors.success.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: AppColors.success.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.star, color: AppColors.success, size: 18),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Printer Default',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppColors.success,
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-                Text(
-                  savedPrinter.name,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w500,
-                      ),
-                ),
-                Text(
-                  savedPrinter.address,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.textDisabled,
-                        fontSize: 11,
-                      ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: () =>
-                context.read<SettingsCubit>().clearDefaultPrinter(),
-            icon: const Icon(Icons.close, size: 16),
-            tooltip: 'Hapus default',
-            visualDensity: VisualDensity.compact,
-          ),
-        ],
+    if (state is PrinterTestSuccess) {
+      return _badge('Berhasil', AppColors.success);
+    }
+    if (state is PrinterTestError) {
+      return _badge('Gagal', AppColors.error);
+    }
+    if (state is PrinterScanInProgress || state is PrinterTestInProgress) {
+      return const MemoirLoadingIndicator(size: 20);
+    }
+    return const SizedBox.shrink();
+  }
+
+  Widget _badge(String label, Color color) {
+    return Text(
+      label,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: color,
       ),
     );
   }
 }
 
-/// Individual printer list tile with test print + save default buttons.
-class _PrinterTile extends StatelessWidget {
+class _SavedPrinterCard extends StatelessWidget {
   final PrinterInfo printer;
   final bool isTesting;
-  final bool isDefault;
 
-  const _PrinterTile({
+  const _SavedPrinterCard({
     required this.printer,
     required this.isTesting,
-    this.isDefault = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final cubit = context.read<SettingsCubit>();
+    final isUsb = printer.connectionType == PrinterConnectionType.usb;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      padding: const EdgeInsets.all(AppSpacing.sm),
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.sm + 4),
       decoration: BoxDecoration(
-        color: isDefault
-            ? AppColors.success.withValues(alpha: 0.05)
-            : AppColors.surfaceContainer,
+        color: AppColors.success.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
-        border: isDefault
-            ? Border.all(color: AppColors.success.withValues(alpha: 0.2))
-            : null,
+        border: Border.all(color: AppColors.success.withValues(alpha: 0.2)),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Icon(
-                isDefault ? Icons.star : Icons.print,
-                size: 20,
-                color: isDefault ? AppColors.success : AppColors.textSecondary,
+                isUsb ? Icons.usb : Icons.print_outlined,
+                color: AppColors.success,
+                size: 18,
               ),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
@@ -353,84 +253,206 @@ class _PrinterTile extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Flexible(
-                          child: Text(
-                            printer.name,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w500),
-                            overflow: TextOverflow.ellipsis,
+                        const Text(
+                          'TERSIMPAN',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.success,
+                            letterSpacing: 1.0,
                           ),
                         ),
-                        if (isDefault) ...[
-                          const SizedBox(width: AppSpacing.xs),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.success.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'DEFAULT',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
-                                  ?.copyWith(
-                                    color: AppColors.success,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 9,
-                                  ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.textSecondary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            isUsb ? 'USB' : 'BT',
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textSecondary,
+                              letterSpacing: 0.5,
                             ),
                           ),
-                        ],
+                        ),
                       ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      printer.name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                     Text(
                       printer.address,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.textDisabled,
-                          ),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textDisabled,
+                      ),
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: isTesting
-                      ? null
-                      : () =>
-                          context.read<SettingsCubit>().testPrint(printer),
-                  child: isTesting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Test Print'),
+              GestureDetector(
+                onTap: isTesting ? null : () => cubit.clearDefaultPrinter(),
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.xs),
+                  child: Icon(
+                    Icons.close,
+                    size: 16,
+                    color: isTesting
+                        ? AppColors.textDisabled
+                        : AppColors.textSecondary,
+                  ),
                 ),
               ),
-              if (!isDefault) ...[
-                const SizedBox(width: AppSpacing.sm),
-                OutlinedButton.icon(
-                  onPressed: isTesting
-                      ? null
-                      : () => context
-                          .read<SettingsCubit>()
-                          .saveDefaultPrinter(printer),
-                  icon: const Icon(Icons.star_outline, size: 16),
-                  label: const Text('Set Default'),
-                ),
-              ],
             ],
+          ),
+          const SizedBox(height: AppSpacing.sm + 2),
+          MemoirButton.outlined(
+            label: isTesting ? 'Printing...' : 'Test Print',
+            icon: isTesting ? null : Icons.print_outlined,
+            isLoading: isTesting,
+            onPressed: isTesting ? null : () => cubit.testPrint(printer),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PrinterSelectTile extends StatefulWidget {
+  final PrinterInfo printer;
+  final VoidCallback onTap;
+
+  const _PrinterSelectTile({required this.printer, required this.onTap});
+
+  @override
+  State<_PrinterSelectTile> createState() => _PrinterSelectTileState();
+}
+
+class _PrinterSelectTileState extends State<_PrinterSelectTile> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
+      onTapCancel: () => setState(() => _pressed = false),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedOpacity(
+        opacity: _pressed ? 0.6 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(AppSpacing.sm + 2),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F8F8),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                widget.printer.connectionType == PrinterConnectionType.usb
+                    ? Icons.usb
+                    : Icons.print_outlined,
+                size: 20,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.printer.name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textPrimary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      widget.printer.address,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textDisabled,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: AppColors.textDisabled,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final PrinterConnectionType connectionType;
+
+  const _EmptyState({this.connectionType = PrinterConnectionType.bluetooth});
+
+  @override
+  Widget build(BuildContext context) {
+    final isUsb = connectionType == PrinterConnectionType.usb;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F8F8),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            isUsb ? Icons.usb_off : Icons.print_disabled,
+            size: 28,
+            color: AppColors.textDisabled,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          const Text(
+            'Tidak ada printer ditemukan',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            isUsb
+                ? 'Pastikan printer USB terhubung melalui kabel OTG.'
+                : 'Pastikan printer Bluetooth sudah dinyalakan dan dipair.',
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textDisabled,
+            ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
