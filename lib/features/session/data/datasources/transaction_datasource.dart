@@ -46,6 +46,7 @@ class TransactionDatasource {
         data: {
           'templateId': templateId,
           'paymentMethod': paymentMethod,
+          'transactionType': 'NORMAL',
           'printQty': printQty,
           'hasDigitalCopy': hasDigitalCopy,
           'totalAmount': totalAmount,
@@ -177,6 +178,9 @@ class TransactionDatasource {
       return switch (statusCode) {
         400 => TransactionException(
           _extractMessage(e) ?? 'Data transaksi tidak valid',
+          isPriceMismatch: _extractCode(e) == 'PRICE_MISMATCH',
+          isPaymentConfigRequired:
+              _extractCode(e) == 'PAYMENT_CONFIG_REQUIRED',
         ),
         404 => const TransactionException('Transaksi tidak ditemukan'),
         422 => TransactionException(
@@ -206,6 +210,15 @@ class TransactionDatasource {
     }
     return null;
   }
+
+  String? _extractCode(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic>) {
+      // API error format: { "error": "ERROR_CODE", "message": "..." }
+      return data['error'] as String?;
+    }
+    return null;
+  }
 }
 
 /// Result of creating a transaction.
@@ -226,7 +239,18 @@ class TransactionException implements Exception {
   /// Whether the caller should retry the operation.
   final bool isRetryable;
 
-  const TransactionException(this.message, {this.isRetryable = false});
+  /// Whether the error is a price mismatch (totalAmount != server calculation).
+  final bool isPriceMismatch;
+
+  /// Whether the error is due to missing payment gateway config on the owner account.
+  final bool isPaymentConfigRequired;
+
+  const TransactionException(
+    this.message, {
+    this.isRetryable = false,
+    this.isPriceMismatch = false,
+    this.isPaymentConfigRequired = false,
+  });
 
   @override
   String toString() => message;

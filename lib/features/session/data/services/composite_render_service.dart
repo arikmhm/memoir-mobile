@@ -66,7 +66,7 @@ class CompositeRenderService {
 
     // Collect file paths only — NO file I/O on main thread.
     final photoSlots = template.elements
-        .where((e) => e.type == 'photo_slot')
+        .where((e) => e.type == 'PHOTO_SLOT')
         .toList()
       ..sort((a, b) => a.sequence.compareTo(b.sequence));
 
@@ -82,7 +82,6 @@ class CompositeRenderService {
           templateJson: templateJson,
           photoPathsBySlot: photoPathsBySlot,
           backgroundPath: template.localBackgroundPath,
-          overlayPath: template.localOverlayPath,
           outputDir: outputDir,
           hasDigitalCopy: hasDigitalCopy,
         ));
@@ -111,7 +110,6 @@ class CompositeRenderService {
     required Map<String, dynamic> templateJson,
     required Map<int, String> photoPathsBySlot,
     required String? backgroundPath,
-    required String? overlayPath,
     required String outputDir,
     required bool hasDigitalCopy,
   }) {
@@ -119,14 +117,10 @@ class CompositeRenderService {
     final canvasW = template.width;
     final canvasH = template.height;
 
-    // Decode background/overlay inside isolate — small template assets.
+    // Decode background inside isolate — small template asset.
     img.Image? background;
     if (backgroundPath != null && File(backgroundPath).existsSync()) {
       background = img.decodeImage(File(backgroundPath).readAsBytesSync());
-    }
-    img.Image? overlay;
-    if (overlayPath != null && File(overlayPath).existsSync()) {
-      overlay = img.decodeImage(File(overlayPath).readAsBytesSync());
     }
 
     // ── Create both canvases upfront ──
@@ -170,12 +164,12 @@ class CompositeRenderService {
     final sortedElements = List<TemplateElement>.from(template.elements)
       ..sort((a, b) => a.sequence.compareTo(b.sequence));
     final photoSlots =
-        sortedElements.where((e) => e.type == 'photo_slot').toList();
+        sortedElements.where((e) => e.type == 'PHOTO_SLOT').toList();
 
     // ── Single-pass: draw all elements on both canvases ──
     for (final el in sortedElements) {
       switch (el.type) {
-        case 'photo_slot':
+        case 'PHOTO_SLOT':
           final slotIndex = photoSlots.indexOf(el);
           final photoPath = photoPathsBySlot[slotIndex];
           if (photoPath == null || !File(photoPath).existsSync()) continue;
@@ -188,8 +182,8 @@ class CompositeRenderService {
           // Pre-downscale immediately to limit memory.
           // Target: 1.5× the largest slot dimension needed.
           final maxSlotW = hasDigitalCopy
-              ? (el.width * _digitalScale).round()
-              : el.width.round();
+              ? el.width * _digitalScale
+              : el.width;
           final targetW = (maxSlotW * 1.5).round();
           if (photo.width > targetW) {
             photo = img.copyResize(
@@ -204,10 +198,10 @@ class CompositeRenderService {
           _drawPhotoDithered(
             printCanvas,
             photo,
-            el.x.round(),
-            el.y.round(),
-            el.width.round(),
-            el.height.round(),
+            el.x,
+            el.y,
+            el.width,
+            el.height,
           );
 
           // Digital canvas — full color.
@@ -215,72 +209,38 @@ class CompositeRenderService {
             _drawPhoto(
               digitalCanvas,
               photo,
-              (el.x * _digitalScale).round(),
-              (el.y * _digitalScale).round(),
-              (el.width * _digitalScale).round(),
-              (el.height * _digitalScale).round(),
+              el.x * _digitalScale,
+              el.y * _digitalScale,
+              el.width * _digitalScale,
+              el.height * _digitalScale,
             );
           }
           // photo goes out of scope → eligible for GC before next decode
 
-        case 'shape':
-          _drawShape(
-            printCanvas,
-            el,
-            el.x.round(),
-            el.y.round(),
-            el.width.round(),
-            el.height.round(),
-          );
-          if (digitalCanvas != null) {
-            _drawShape(
-              digitalCanvas,
-              el,
-              (el.x * _digitalScale).round(),
-              (el.y * _digitalScale).round(),
-              (el.width * _digitalScale).round(),
-              (el.height * _digitalScale).round(),
-            );
-          }
-
-        case 'text':
+        case 'TEXT':
           _drawText(
             printCanvas,
             el,
-            el.x.round(),
-            el.y.round(),
-            el.width.round(),
-            el.height.round(),
+            el.x,
+            el.y,
+            el.width,
+            el.height,
             _printScale,
           );
           if (digitalCanvas != null) {
             _drawText(
               digitalCanvas,
               el,
-              (el.x * _digitalScale).round(),
-              (el.y * _digitalScale).round(),
-              (el.width * _digitalScale).round(),
-              (el.height * _digitalScale).round(),
+              el.x * _digitalScale,
+              el.y * _digitalScale,
+              el.width * _digitalScale,
+              el.height * _digitalScale,
               _digitalScale,
             );
           }
 
-        case 'image':
+        case 'IMAGE':
           break;
-      }
-    }
-
-    // Overlay on both canvases.
-    if (overlay != null) {
-      final ovP = img.copyResize(overlay, width: canvasW, height: canvasH);
-      img.compositeImage(printCanvas, ovP);
-      if (digitalCanvas != null) {
-        final ovD = img.copyResize(
-          overlay,
-          width: digitalCanvas.width,
-          height: digitalCanvas.height,
-        );
-        img.compositeImage(digitalCanvas, ovD);
       }
     }
 
@@ -637,41 +597,6 @@ class CompositeRenderService {
   }
 
   /// Draw a shape element (rect or circle).
-  static void _drawShape(
-    img.Image canvas,
-    TemplateElement el,
-    int x,
-    int y,
-    int w,
-    int h,
-  ) {
-    final fillHex = el.properties['fill'] as String? ??
-        el.properties['color'] as String?;
-    final shapeType = el.properties['shapeType'] as String? ?? 'rect';
-
-    final color = _parseHexColor(fillHex) ??
-        img.ColorRgba8(0, 0, 0, 0);
-
-    if (shapeType == 'circle') {
-      final cx = x + w ~/ 2;
-      final cy = y + h ~/ 2;
-      final radius = w < h ? w ~/ 2 : h ~/ 2;
-      img.fillCircle(canvas, x: cx, y: cy, radius: radius, color: color);
-    } else {
-      final borderRadius =
-          (el.properties['borderRadius'] as num?)?.toDouble() ?? 0;
-      img.fillRect(
-        canvas,
-        x1: x,
-        y1: y,
-        x2: x + w,
-        y2: y + h,
-        color: color,
-        radius: borderRadius.round(),
-      );
-    }
-  }
-
   /// Draw a text element using built-in bitmap font.
   static void _drawText(
     img.Image canvas,

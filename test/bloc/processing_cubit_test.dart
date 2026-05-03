@@ -79,7 +79,7 @@ final _mockTemplate = Template(
   elements: const [
     TemplateElement(
       id: 'slot-1',
-      type: 'photo_slot',
+      type: 'PHOTO_SLOT',
       x: 50, y: 50,
       width: 200, height: 300,
       sequence: 1,

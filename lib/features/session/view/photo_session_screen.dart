@@ -56,7 +56,7 @@ class _PhotoSessionScreenState extends State<PhotoSessionScreen>
 
   List<TemplateElement> _photoSlots(Template template) {
     return template.elements
-        .where((e) => e.type == 'photo_slot')
+        .where((e) => e.type == 'PHOTO_SLOT')
         .toList()
       ..sort((a, b) => a.sequence.compareTo(b.sequence));
   }
@@ -349,8 +349,6 @@ class _SessionPreview extends StatelessWidget {
                 ...sortedElements.map(
                   (el) => _buildElement(el, scale),
                 ),
-                // Overlay on top
-                _buildOverlay(),
               ],
             ),
           ),
@@ -383,42 +381,16 @@ class _SessionPreview extends StatelessWidget {
     return const SizedBox.shrink();
   }
 
-  Widget _buildOverlay() {
-    final localPath = template.localOverlayPath;
-    if (localPath != null && File(localPath).existsSync()) {
-      return Positioned.fill(
-        child: Image.file(
-          File(localPath),
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => const SizedBox.shrink(),
-        ),
-      );
-    }
-    final url = template.overlayUrl;
-    if (url != null && url.isNotEmpty) {
-      return Positioned.fill(
-        child: Image.network(
-          url,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => const SizedBox.shrink(),
-        ),
-      );
-    }
-    return const SizedBox.shrink();
-  }
-
   Widget _buildElement(TemplateElement el, double scale) {
     Widget child;
 
-    if (el.type == 'photo_slot') {
+    if (el.type == 'PHOTO_SLOT') {
       final slotIndex = _slotIndex(el);
       child = _buildPhotoSlot(el, scale, slotIndex);
-    } else if (el.type == 'text') {
+    } else if (el.type == 'TEXT') {
       child = _TextElement(element: el, scale: scale);
-    } else if (el.type == 'image') {
+    } else if (el.type == 'IMAGE') {
       child = _ImageElement(element: el, scale: scale);
-    } else if (el.type == 'shape') {
-      child = _ShapeElement(element: el, scale: scale);
     } else {
       child = _GenericElement(element: el, scale: scale);
     }
@@ -429,7 +401,7 @@ class _SessionPreview extends StatelessWidget {
       width: el.width * scale,
       height: el.height * scale,
       child: Opacity(
-        opacity: (el.opacity / 100.0).clamp(0.0, 1.0),
+        opacity: el.normalizedOpacity,
         child: child,
       ),
     );
@@ -769,60 +741,6 @@ class _ImageElement extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _ShapeElement extends StatelessWidget {
-  final TemplateElement element;
-  final double scale;
-
-  const _ShapeElement({required this.element, required this.scale});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorHex = element.properties['fill'] as String? ??
-        element.properties['color'] as String?;
-    final borderRadius =
-        (element.properties['borderRadius'] as num?)?.toDouble() ?? 0;
-    final shapeType = element.properties['shapeType'] as String? ?? 'rect';
-    final strokeHex = element.properties['stroke'] as String?;
-    final strokeWidth =
-        (element.properties['strokeWidth'] as num?)?.toDouble();
-
-    Color? fillColor;
-    if (colorHex != null && colorHex.isNotEmpty) {
-      fillColor = _parseHexColor(colorHex);
-    }
-
-    Color? strokeColor;
-    if (strokeHex != null && strokeHex.isNotEmpty) {
-      strokeColor = _parseHexColor(strokeHex);
-    }
-
-    final isCircle = shapeType == 'circle';
-
-    return Container(
-      decoration: BoxDecoration(
-        color: fillColor ?? Colors.transparent,
-        shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
-        borderRadius: !isCircle && borderRadius > 0
-            ? BorderRadius.circular(borderRadius * scale)
-            : null,
-        border: strokeColor != null && strokeWidth != null && strokeWidth > 0
-            ? Border.all(color: strokeColor, width: strokeWidth * scale)
-            : fillColor == null
-                ? Border.all(
-                    color: AppColors.border.withAlpha(120), width: 0.5)
-                : null,
-      ),
-    );
-  }
-
-  static Color? _parseHexColor(String hex) {
-    hex = hex.replaceFirst('#', '');
-    final value = int.tryParse(hex, radix: 16);
-    if (value == null) return null;
-    return Color(hex.length == 6 ? 0xFF000000 | value : value);
   }
 }
 

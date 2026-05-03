@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /c/arik/projects/memoir/backend-memoir/drizzle/*.sql)",
+      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
+      "Bash(flutter pub:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(flutter test:*)",
+      "Bash(xargs grep:*)",
+      "Bash(flutter doctor:*)",
+      "Bash(flutter devices:*)",
+      "Bash(adb devices:*)",
+      "Bash(adb kill-server:*)",
+      "Bash(adb start-server:*)",
+      "Bash(adb pair:*)",
+      "Bash(adb connect:*)",
+      "Bash(adb disconnect:*)",
+      "Bash(dart analyze:*)",
+      "Bash(find /c/arik/projects/memoir/memoir-mobile -type f \\\\\\(-name *printer* -o -name *usb* -o -name *bluetooth* -o -name *scan* \\\\\\))",
+      "Bash(find /c/arik/projects/memoir/memoir-mobile/lib -name *print* -o -name *composite*)",
+      "mcp__claude_ai_Notion__notion-search",
+      "mcp__claude_ai_Notion__notion-fetch",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(curl -s https://backend-memoir-development.up.railway.app/api/v1)",
+      "Bash(curl -sI \"https://pub-1accdbf11da94297ab60b3bc0c796fc5.r2.dev/30f31575-d79f-4ad1-ae6b-d927956db23a/backgrounds/8259f60f-d0b8-43c8-bed1-6264ea0347b1.png\")",
+      "Bash(curl -v \"https://pub-1accdbf11da94297ab60b3bc0c796fc5.r2.dev/30f31575-d79f-4ad1-ae6b-d927956db23a/backgrounds/8259f60f-d0b8-43c8-bed1-6264ea0347b1.png\" -o /dev/null)",
+      "Bash(curl -k -sI \"https://pub-1accdbf11da94297ab60b3bc0c796fc5.r2.dev/30f31575-d79f-4ad1-ae6b-d927956db23a/backgrounds/8259f60f-d0b8-43c8-bed1-6264ea0347b1.png\")",
+      "Bash(curl -k -s \"https://pub-1accdbf11da94297ab60b3bc0c796fc5.r2.dev/30f31575-d79f-4ad1-ae6b-d927956db23a/backgrounds/8259f60f-d0b8-43c8-bed1-6264ea0347b1.png\")",
+      "Bash(curl:*)"
+    ]
+  }
+}

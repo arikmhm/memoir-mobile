@@ -57,10 +57,7 @@ Future<void> initDependencies() async {
   );
 
   sl.registerSingleton<TemplateCacheService>(
-    TemplateCacheService(
-      prefs: sl<SharedPreferences>(),
-      dio: sl<ApiClient>().dio,
-    ),
+    TemplateCacheService(prefs: sl<SharedPreferences>()),
   );
 
   // ─── Datasources ─────────────────────────────────────────────
@@ -163,3 +160,6 @@ Future<void> initDependencies() async {
 
   sl.registerSingleton<AppRouter>(AppRouter(appCubit: sl<AppCubit>()));
 }
+
+/// Dio untuk download gambar dari CDN eksternal (Cloudflare R2, S3, dll).
+///

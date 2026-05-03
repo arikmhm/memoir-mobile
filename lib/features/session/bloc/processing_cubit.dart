@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -40,6 +41,8 @@ class ProcessingCubit extends Cubit<ProcessingState> {
   Template? _template;
   Map<int, String>? _capturedPhotos;
   bool _hasDigitalCopy = false;
+
+  Timer? _pgPollingTimer;
 
   ProcessingCubit({
     required TransactionRepository repository,
@@ -94,6 +97,8 @@ class ProcessingCubit extends Cubit<ProcessingState> {
   }
 
   /// Emit the awaiting payment state with method-specific data.
+  ///
+  /// For PG, also starts background polling every 4 seconds.
   void _emitAwaitingPayment({
     required Transaction transaction,
     required String paymentMethod,
@@ -109,6 +114,61 @@ class ProcessingCubit extends Cubit<ProcessingState> {
       paymentExpiresAt:
           paymentMethod == 'PG' ? transaction.paymentExpiresAt : null,
     ));
+
+    if (paymentMethod == 'PG') {
+      _startPgPolling(transaction);
+    }
+  }
+
+  void _startPgPolling(Transaction transaction) {
+    _pgPollingTimer?.cancel();
+    _pgPollingTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => _autoPollPayment(transaction),
+    );
+  }
+
+  void _stopPgPolling() {
+    _pgPollingTimer?.cancel();
+    _pgPollingTimer = null;
+  }
+
+  /// Silent background poll — no loading state emitted.
+  ///
+  /// Resolves the payment if PAID/FAILED/EXPIRED; ignores network errors
+  /// so polling continues on the next tick.
+  Future<void> _autoPollPayment(Transaction transaction) async {
+    if (isClosed || state is! ProcessingAwaitingPayment) {
+      _stopPgPolling();
+      return;
+    }
+
+    String status;
+    try {
+      status = await _repository.checkPayment(transaction.id);
+    } catch (_) {
+      return; // Transient error — retry on next tick.
+    }
+
+    // Guard again after the async gap: manual checkPgPayment() may have
+    // already changed the state while we were awaiting.
+    if (isClosed || state is! ProcessingAwaitingPayment) return;
+
+    if (status == 'PAID') {
+      _stopPgPolling();
+      await _renderAndPrint(transaction: transaction);
+    } else if (status == 'FAILED' || status == 'EXPIRED') {
+      _stopPgPolling();
+      if (!isClosed) {
+        emit(ProcessingPaymentFailed(
+          transaction: transaction,
+          message: status == 'EXPIRED'
+              ? 'Pembayaran telah kedaluwarsa.'
+              : 'Pembayaran gagal.',
+        ));
+      }
+    }
+    // PENDING — do nothing, next tick will check again.
   }
 
   /// Called when user taps "SUDAH BAYAR" for CASH or STATIC_QRIS.
@@ -132,13 +192,14 @@ class ProcessingCubit extends Cubit<ProcessingState> {
 
   /// Called when user taps "CEK PEMBAYARAN" for PG.
   ///
+  /// Stops auto-polling, does an immediate check with a loading indicator,
+  /// then restarts polling if still PENDING.
   /// Returns the payment status string so the UI can show feedback.
-  /// - PAID → proceed to render
-  /// - PENDING → returns 'PENDING' (UI shows snackbar)
-  /// - FAILED/EXPIRED → show payment failed state
   Future<String?> checkPgPayment() async {
     final s = state;
     if (s is! ProcessingAwaitingPayment) return null;
+
+    _stopPgPolling();
 
     final transaction = s.transaction;
 
@@ -279,6 +340,12 @@ class ProcessingCubit extends Cubit<ProcessingState> {
     final transaction = s.transaction!;
 
     await _renderAndPrint(transaction: transaction);
+  }
+
+  @override
+  Future<void> close() {
+    _stopPgPolling();
+    return super.close();
   }
 
   /// Fire-and-forget: retry [action] up to 10 times with exponential backoff.

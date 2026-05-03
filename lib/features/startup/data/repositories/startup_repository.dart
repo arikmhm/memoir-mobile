@@ -61,7 +61,7 @@ class StartupRepository {
     try {
       final templates = await _datasource.getTemplates();
 
-      // Cache JSON + download background/overlay images
+      // Cache JSON + download background images
       final cached = await _cacheService.cacheTemplates(templates);
 
       return Result.ok(cached);

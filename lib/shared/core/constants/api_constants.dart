@@ -6,9 +6,10 @@ class ApiConstants {
   ApiConstants._();
 
   // Base URL — override via: flutter run --dart-define=API_BASE_URL=https://...
+  // Local API di port 3000, host 0.0.0.0
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://backend-memoir.vercel.app/api/v1',
+    defaultValue: 'http://192.168.3.102:3000/api/v1',
   );
 
   // Mock mode — override via: flutter run --dart-define=USE_MOCK=true

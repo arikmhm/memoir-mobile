@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../../shared/core/constants/api_constants.dart';
 import '../../../../shared/data/datasources/api_client.dart';
@@ -81,6 +82,12 @@ class StartupDatasource {
         throw const StartupException('Respons template tidak valid');
       }
 
+      // Debug: log raw API response
+      for (final item in templateList) {
+        final tmpl = (item as Map<String, dynamic>)['template'] as Map<String, dynamic>?;
+        debugPrint('[API] template "${tmpl?['name']}" backgroundUrl: ${tmpl?['backgroundUrl']}');
+      }
+
       final templates = templateList
           .map((e) => Template.fromApiJson(e as Map<String, dynamic>))
           .toList();
@@ -129,7 +136,7 @@ class StartupDatasource {
         elements: [
           const TemplateElement(
             id: 'el_001',
-            type: 'photo_slot',
+            type: 'PHOTO_SLOT',
             x: 50,
             y: 50,
             width: 500,
@@ -139,7 +146,7 @@ class StartupDatasource {
           ),
           const TemplateElement(
             id: 'el_002',
-            type: 'photo_slot',
+            type: 'PHOTO_SLOT',
             x: 50,
             y: 475,
             width: 500,
@@ -149,7 +156,7 @@ class StartupDatasource {
           ),
           const TemplateElement(
             id: 'el_003',
-            type: 'photo_slot',
+            type: 'PHOTO_SLOT',
             x: 50,
             y: 900,
             width: 500,
@@ -159,7 +166,7 @@ class StartupDatasource {
           ),
           const TemplateElement(
             id: 'el_004',
-            type: 'photo_slot',
+            type: 'PHOTO_SLOT',
             x: 50,
             y: 1325,
             width: 500,
@@ -179,7 +186,7 @@ class StartupDatasource {
         elements: [
           const TemplateElement(
             id: 'el_005',
-            type: 'photo_slot',
+            type: 'PHOTO_SLOT',
             x: 50,
             y: 50,
             width: 540,
@@ -189,7 +196,7 @@ class StartupDatasource {
           ),
           const TemplateElement(
             id: 'el_006',
-            type: 'photo_slot',
+            type: 'PHOTO_SLOT',
             x: 610,
             y: 50,
             width: 540,
@@ -209,7 +216,7 @@ class StartupDatasource {
         elements: [
           const TemplateElement(
             id: 'el_007',
-            type: 'photo_slot',
+            type: 'PHOTO_SLOT',
             x: 100,
             y: 100,
             width: 1000,
@@ -219,7 +226,7 @@ class StartupDatasource {
           ),
           const TemplateElement(
             id: 'el_008',
-            type: 'text',
+            type: 'TEXT',
             x: 400,
             y: 720,
             width: 400,

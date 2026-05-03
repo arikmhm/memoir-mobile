@@ -25,9 +25,16 @@ class PairingDatasource {
 
   /// Exchange 6-digit pairing code for a device token + kiosk config.
   ///
+  /// Implements exponential backoff retry on 429 (rate limit).
   /// Returns [PairResult] with token and optional kioskConfig.
   /// Throws [PairingException] on failure.
-  Future<PairResult> pair(String pairingCode) async {
+  Future<PairResult> pair(String pairingCode) => _retryWithExponentialBackoff(
+    () => _performPair(pairingCode),
+    maxRetries: 3,
+  );
+
+  /// Performs the actual pair request.
+  Future<PairResult> _performPair(String pairingCode) async {
     if (useMock) return _mockPair(pairingCode);
 
     try {
@@ -49,22 +56,44 @@ class PairingDatasource {
       return PairResult(deviceToken: token, kioskConfig: kioskConfig);
     } on DioException catch (e) {
       switch (e.response?.statusCode) {
-        case 400:
-          throw const PairingException('Format kode pairing tidak valid');
         case 404:
-          throw const PairingException(
-            'Kode pairing tidak ditemukan atau sudah kedaluwarsa',
-          );
+          throw const PairingException('Kode pairing tidak ditemukan atau sudah kedaluwarsa');
         case 422:
-          throw const PairingException('Kiosk tidak aktif');
+          throw const PairingException('Kode pairing tidak valid (harus tepat 6 angka)');
         case 429:
-          throw const PairingException(
-            'Terlalu banyak percobaan. Coba lagi nanti.',
-          );
+          rethrow; // Let retry logic handle this
         default:
           throw PairingException(
             'Gagal menghubungi server: ${e.message}',
           );
+      }
+    }
+  }
+
+  /// Retries a pairing request with exponential backoff on 429 errors.
+  ///
+  /// Implements exponential backoff with jitter:
+  /// - Attempt 1: immediate
+  /// - Attempt 2: 100ms + jitter
+  /// - Attempt 3: 200ms + jitter
+  /// - Attempt 4: 400ms + jitter
+  Future<PairResult> _retryWithExponentialBackoff(
+    Future<PairResult> Function() fn, {
+    int maxRetries = 3,
+  }) async {
+    var attempt = 0;
+    while (true) {
+      try {
+        return await fn();
+      } on DioException catch (e) {
+        attempt++;
+        if (e.response?.statusCode != 429 || attempt >= maxRetries) {
+          rethrow;
+        }
+        // Exponential backoff: 100ms * 2^(attempt-1) + random jitter
+        final baseDelay = 100 * (1 << (attempt - 1));
+        final jitter = (baseDelay * 0.1 * (DateTime.now().millisecond % 100) / 100).toInt();
+        await Future<void>.delayed(Duration(milliseconds: baseDelay + jitter));
       }
     }
   }

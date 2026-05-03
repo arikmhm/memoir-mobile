@@ -60,14 +60,11 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
     return KioskConfig.fromJsonString(json);
   }
 
-  /// Price resolution: template override → kiosk fallback
+  /// Price resolution: use kiosk config pricing
   _PriceInfo _resolvePrice(Template template, KioskConfig config) {
-    final basePrice =
-        template.overridePriceBase ?? config.priceBaseSession;
-    final extraPrintPrice =
-        template.overridePriceExtraPrint ?? config.pricePerExtraPrint;
-    final digitalCopyPrice =
-        template.overridePriceDigitalCopy ?? config.priceDigitalCopy;
+    final basePrice = config.priceBaseSession;
+    final extraPrintPrice = config.pricePerExtraPrint;
+    final digitalCopyPrice = config.priceDigitalCopy;
 
     final extraPrintTotal =
         _printQty > 1 ? (_printQty - 1) * extraPrintPrice : 0;
@@ -279,7 +276,7 @@ class _MiniPreview extends StatelessWidget {
 
   List<TemplateElement> _photoSlots() {
     return template.elements
-        .where((e) => e.type == 'photo_slot')
+        .where((e) => e.type == 'PHOTO_SLOT')
         .toList()
       ..sort((a, b) => a.sequence.compareTo(b.sequence));
   }
@@ -324,7 +321,6 @@ class _MiniPreview extends StatelessWidget {
             ...sortedElements.map(
               (el) => _buildElement(el, scale, slots),
             ),
-            _buildOverlay(),
           ],
         ),
       ),
@@ -357,30 +353,6 @@ class _MiniPreview extends StatelessWidget {
     return const SizedBox.shrink();
   }
 
-  Widget _buildOverlay() {
-    final localPath = template.localOverlayPath;
-    if (localPath != null && File(localPath).existsSync()) {
-      return Positioned.fill(
-        child: Image.file(
-          File(localPath),
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => const SizedBox.shrink(),
-        ),
-      );
-    }
-    final url = template.overlayUrl;
-    if (url != null && url.isNotEmpty) {
-      return Positioned.fill(
-        child: Image.network(
-          url,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => const SizedBox.shrink(),
-        ),
-      );
-    }
-    return const SizedBox.shrink();
-  }
-
   Widget _buildElement(
     TemplateElement el,
     double scale,
@@ -388,7 +360,7 @@ class _MiniPreview extends StatelessWidget {
   ) {
     Widget child;
 
-    if (el.type == 'photo_slot') {
+    if (el.type == 'PHOTO_SLOT') {
       final slotIndex = slots.indexOf(el);
       final path = capturedPhotos[slotIndex];
       child = path != null
@@ -403,16 +375,14 @@ class _MiniPreview extends StatelessWidget {
               ),
             )
           : Container(color: AppColors.surfaceContainer);
-    } else if (el.type == 'text') {
+    } else if (el.type == 'TEXT') {
       child = _buildText(el, scale);
-    } else if (el.type == 'image') {
+    } else if (el.type == 'IMAGE') {
       final url = el.properties['imageUrl'] as String? ?? '';
       child = url.isNotEmpty
           ? Image.network(url, fit: BoxFit.contain,
               errorBuilder: (_, _, _) => const SizedBox.shrink())
           : const SizedBox.shrink();
-    } else if (el.type == 'shape') {
-      child = _buildShape(el, scale);
     } else {
       child = const SizedBox.shrink();
     }
@@ -423,7 +393,7 @@ class _MiniPreview extends StatelessWidget {
       width: el.width * scale,
       height: el.height * scale,
       child: Opacity(
-        opacity: (el.opacity / 100.0).clamp(0.0, 1.0),
+        opacity: el.normalizedOpacity,
         child: child,
       ),
     );
@@ -455,30 +425,6 @@ class _MiniPreview extends StatelessWidget {
         textAlign: TextAlign.center,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-      ),
-    );
-  }
-
-  Widget _buildShape(TemplateElement el, double scale) {
-    final colorHex = el.properties['fill'] as String? ??
-        el.properties['color'] as String?;
-    final borderRadius =
-        (el.properties['borderRadius'] as num?)?.toDouble() ?? 0;
-    final shapeType = el.properties['shapeType'] as String? ?? 'rect';
-    final isCircle = shapeType == 'circle';
-
-    Color? fillColor;
-    if (colorHex != null && colorHex.isNotEmpty) {
-      fillColor = _parseHexColor(colorHex);
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: fillColor ?? Colors.transparent,
-        shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
-        borderRadius: !isCircle && borderRadius > 0
-            ? BorderRadius.circular(borderRadius * scale)
-            : null,
       ),
     );
   }

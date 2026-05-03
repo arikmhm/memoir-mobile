@@ -17,6 +17,11 @@ class Transaction extends Equatable {
   final int totalAmount;
   final String? paidAt;
 
+  /// Price snapshot fields — set at transaction creation from kiosk config.
+  final int? appliedBasePrice;
+  final int? appliedExtraPrintPrice;
+  final int? appliedDigitalCopyPrice;
+
   const Transaction({
     required this.id,
     required this.orderId,
@@ -28,6 +33,9 @@ class Transaction extends Equatable {
     required this.hasDigitalCopy,
     required this.totalAmount,
     this.paidAt,
+    this.appliedBasePrice,
+    this.appliedExtraPrintPrice,
+    this.appliedDigitalCopyPrice,
   });
 
   factory Transaction.fromJson(Map<String, dynamic> json) => Transaction(
@@ -41,6 +49,9 @@ class Transaction extends Equatable {
     hasDigitalCopy: json['hasDigitalCopy'] as bool,
     totalAmount: json['totalAmount'] as int,
     paidAt: json['paidAt'] as String?,
+    appliedBasePrice: json['appliedBasePrice'] as int?,
+    appliedExtraPrintPrice: json['appliedExtraPrintPrice'] as int?,
+    appliedDigitalCopyPrice: json['appliedDigitalCopyPrice'] as int?,
   );
 
   bool get isPaid => status == 'PAID';
@@ -60,5 +71,8 @@ class Transaction extends Equatable {
     hasDigitalCopy,
     totalAmount,
     paidAt,
+    appliedBasePrice,
+    appliedExtraPrintPrice,
+    appliedDigitalCopyPrice,
   ];
 }

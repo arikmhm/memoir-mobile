@@ -2,20 +2,14 @@ import 'package:equatable/equatable.dart';
 
 /// Template model matching `GET /kiosk/templates` response.
 ///
-/// Per PRD-05 Section 8: 4 element types (`photo_slot`, `image`, `text`, `shape`)
-/// with spatial attributes and polymorphic properties.
+/// Element types: `PHOTO_SLOT`, `IMAGE`, `TEXT`.
 class Template extends Equatable {
   final String id;
   final String name;
   final int width;
   final int height;
   final String? backgroundUrl;
-  final String? overlayUrl;
   final String? localBackgroundPath;
-  final String? localOverlayPath;
-  final int? overridePriceBase;
-  final int? overridePriceExtraPrint;
-  final int? overridePriceDigitalCopy;
   final List<TemplateElement> elements;
   final DateTime updatedAt;
 
@@ -25,12 +19,7 @@ class Template extends Equatable {
     required this.width,
     required this.height,
     this.backgroundUrl,
-    this.overlayUrl,
     this.localBackgroundPath,
-    this.localOverlayPath,
-    this.overridePriceBase,
-    this.overridePriceExtraPrint,
-    this.overridePriceDigitalCopy,
     required this.elements,
     required this.updatedAt,
   });
@@ -47,10 +36,6 @@ class Template extends Equatable {
       width: tmpl['width'] as int,
       height: tmpl['height'] as int,
       backgroundUrl: tmpl['backgroundUrl'] as String?,
-      overlayUrl: tmpl['overlayUrl'] as String?,
-      overridePriceBase: tmpl['overridePriceBase'] as int?,
-      overridePriceExtraPrint: tmpl['overridePriceExtraPrint'] as int?,
-      overridePriceDigitalCopy: tmpl['overridePriceDigitalCopy'] as int?,
       elements: elements
           .map((e) => TemplateElement.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -65,12 +50,7 @@ class Template extends Equatable {
     width: json['width'] as int,
     height: json['height'] as int,
     backgroundUrl: json['backgroundUrl'] as String?,
-    overlayUrl: json['overlayUrl'] as String?,
     localBackgroundPath: json['localBackgroundPath'] as String?,
-    localOverlayPath: json['localOverlayPath'] as String?,
-    overridePriceBase: json['overridePriceBase'] as int?,
-    overridePriceExtraPrint: json['overridePriceExtraPrint'] as int?,
-    overridePriceDigitalCopy: json['overridePriceDigitalCopy'] as int?,
     elements: (json['elements'] as List<dynamic>)
         .map((e) => TemplateElement.fromJson(e as Map<String, dynamic>))
         .toList(),
@@ -83,12 +63,7 @@ class Template extends Equatable {
     'width': width,
     'height': height,
     'backgroundUrl': backgroundUrl,
-    'overlayUrl': overlayUrl,
     'localBackgroundPath': localBackgroundPath,
-    'localOverlayPath': localOverlayPath,
-    'overridePriceBase': overridePriceBase,
-    'overridePriceExtraPrint': overridePriceExtraPrint,
-    'overridePriceDigitalCopy': overridePriceDigitalCopy,
     'elements': elements.map((e) => e.toJson()).toList(),
     'updatedAt': updatedAt.toIso8601String(),
   };
@@ -96,7 +71,6 @@ class Template extends Equatable {
   /// Create a copy with optional field overrides.
   Template copyWith({
     String? localBackgroundPath,
-    String? localOverlayPath,
   }) =>
       Template(
         id: id,
@@ -104,37 +78,32 @@ class Template extends Equatable {
         width: width,
         height: height,
         backgroundUrl: backgroundUrl,
-        overlayUrl: overlayUrl,
         localBackgroundPath: localBackgroundPath ?? this.localBackgroundPath,
-        localOverlayPath: localOverlayPath ?? this.localOverlayPath,
-        overridePriceBase: overridePriceBase,
-        overridePriceExtraPrint: overridePriceExtraPrint,
-        overridePriceDigitalCopy: overridePriceDigitalCopy,
         elements: elements,
         updatedAt: updatedAt,
       );
 
-  /// Number of photo_slot elements in this template.
+  /// Number of PHOTO_SLOT elements in this template.
   int get photoSlotCount =>
-      elements.where((e) => e.type == 'photo_slot').length;
+      elements.where((e) => e.type == 'PHOTO_SLOT').length;
 
   @override
-  List<Object?> get props => [id, name, width, height, updatedAt];
+  List<Object?> get props => [id, name, width, height, updatedAt, localBackgroundPath];
 }
 
 /// A single element within a template.
 ///
-/// Types: `photo_slot`, `image`, `text`, `shape`.
+/// Types: `PHOTO_SLOT`, `IMAGE`, `TEXT`.
 /// Sorted by `sequence` (z-order).
 class TemplateElement extends Equatable {
   final String id;
-  final String type; // photo_slot, image, text, shape
-  final double x;
-  final double y;
-  final double width;
-  final double height;
-  final double rotation;
-  final double opacity;
+  final String type; // PHOTO_SLOT, IMAGE, TEXT
+  final int x;
+  final int y;
+  final int width;
+  final int height;
+  final int rotation;
+  final int opacity; // 0-100
   final int sequence;
   final Map<String, dynamic> properties;
 
@@ -155,12 +124,12 @@ class TemplateElement extends Equatable {
       TemplateElement(
         id: json['id'] as String,
         type: (json['elementType'] ?? json['type']) as String,
-        x: (json['x'] as num).toDouble(),
-        y: (json['y'] as num).toDouble(),
-        width: (json['width'] as num).toDouble(),
-        height: (json['height'] as num).toDouble(),
-        rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
-        opacity: (json['opacity'] as num?)?.toDouble() ?? 100.0,
+        x: (json['x'] as num).toInt(),
+        y: (json['y'] as num).toInt(),
+        width: (json['width'] as num).toInt(),
+        height: (json['height'] as num).toInt(),
+        rotation: (json['rotation'] as num?)?.toInt() ?? 0,
+        opacity: (json['opacity'] as num?)?.toInt() ?? 100,
         sequence: json['sequence'] as int,
         properties: json['properties'] as Map<String, dynamic>,
       );
@@ -177,6 +146,12 @@ class TemplateElement extends Equatable {
     'sequence': sequence,
     'properties': properties,
   };
+
+  /// Normalized opacity for rendering (0.0 - 1.0).
+  double get normalizedOpacity => opacity / 100;
+
+  /// Capture order for PHOTO_SLOT elements.
+  int? get captureOrder => properties['captureOrder'] as int?;
 
   @override
   List<Object?> get props => [id, type, sequence];

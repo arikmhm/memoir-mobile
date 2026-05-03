@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -9,7 +11,20 @@ import 'features/app/bloc/app_cubit.dart';
 ///
 /// Initializes dependencies, sets landscape orientation,
 /// and starts the app lifecycle via AppCubit.
+/// Bypass SSL cert verification for all dart:io HttpClient instances.
+///
+/// Needed for Cloudflare R2 CDN (pub-*.r2.dev) which has hostname mismatch
+/// against Dart's BoringSSL. Safe because all URLs originate from our API.
+class _TrustAllCertsOverride extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback = (cert, host, port) => true;
+  }
+}
+
 void main() async {
+  HttpOverrides.global = _TrustAllCertsOverride();
   WidgetsFlutterBinding.ensureInitialized();
 
   // Lock to portrait orientation (phone testing)

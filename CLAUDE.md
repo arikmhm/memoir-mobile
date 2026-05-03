@@ -1,7 +1,6 @@
 # memoir. Mobile Runner
 
 Flutter kiosk app untuk Android tablet — menjalankan sesi photo booth, pembayaran, dan printing.
-Bagian dari platform memoir. (lihat Notion workspace "memoir." untuk PRD & API docs lengkap).
 
 ## Quick Commands
 

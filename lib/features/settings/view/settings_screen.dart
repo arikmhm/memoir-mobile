@@ -4,9 +4,9 @@ import '../../../di.dart';
 import '../../../shared/core/theme/app_colors.dart';
 import '../../../shared/core/theme/app_spacing.dart';
 import '../../../shared/data/datasources/storage_service.dart';
-import 'widgets/camera_test_section.dart';
+import 'widgets/booth_mode_section.dart';
+import 'widgets/devices_section.dart';
 import 'widgets/payment_method_section.dart';
-import 'widgets/printer_test_section.dart';
 import 'widgets/screensaver_config_section.dart';
 import 'widgets/session_timer_section.dart';
 import 'widgets/template_list_section.dart';
@@ -27,8 +27,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   static const _tabs = [
     _TabDef(icon: Icons.dashboard_outlined, label: 'Template'),
-    _TabDef(icon: Icons.camera_alt_outlined, label: 'Kamera'),
-    _TabDef(icon: Icons.print_outlined, label: 'Printer'),
+    _TabDef(icon: Icons.tune_outlined, label: 'Mode Booth'),
+    _TabDef(icon: Icons.devices_outlined, label: 'Perangkat'),
     _TabDef(icon: Icons.payment_outlined, label: 'Pembayaran'),
     _TabDef(icon: Icons.timer_outlined, label: 'Waktu Sesi'),
     _TabDef(icon: Icons.wallpaper_outlined, label: 'Screensaver'),
@@ -204,8 +204,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildContent() {
     return switch (_activeTab) {
       0 => const TemplateListSection(),
-      1 => const CameraTestSection(),
-      2 => const PrinterTestSection(),
+      1 => const BoothModeSection(),
+      2 => const DevicesSection(),
       3 => PaymentMethodSection(storageService: sl<StorageService>()),
       4 => SessionTimerSection(storageService: sl<StorageService>()),
       5 => ScreensaverConfigSection(storageService: sl<StorageService>()),

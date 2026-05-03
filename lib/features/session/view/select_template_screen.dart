@@ -304,7 +304,6 @@ class _LargePreview extends StatelessWidget {
                 children: [
                   _buildBackground(),
                   ...sortedElements.map((el) => _buildElement(el, scale)),
-                  _buildOverlay(),
                 ],
               ),
             ),
@@ -338,36 +337,11 @@ class _LargePreview extends StatelessWidget {
     return const SizedBox.shrink();
   }
 
-  Widget _buildOverlay() {
-    final localPath = template.localOverlayPath;
-    if (localPath != null && File(localPath).existsSync()) {
-      return Positioned.fill(
-        child: Image.file(
-          File(localPath),
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => const SizedBox.shrink(),
-        ),
-      );
-    }
-    final url = template.overlayUrl;
-    if (url != null && url.isNotEmpty) {
-      return Positioned.fill(
-        child: Image.network(
-          url,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => const SizedBox.shrink(),
-        ),
-      );
-    }
-    return const SizedBox.shrink();
-  }
-
   Widget _buildElement(TemplateElement el, double scale) {
     final child = switch (el.type) {
-      'photo_slot' => _PhotoSlotElement(element: el, scale: scale),
-      'text' => _TextElement(element: el, scale: scale),
-      'image' => _ImageElement(element: el, scale: scale),
-      'shape' => _ShapeElement(element: el, scale: scale),
+      'PHOTO_SLOT' => _PhotoSlotElement(element: el, scale: scale),
+      'TEXT' => _TextElement(element: el, scale: scale),
+      'IMAGE' => _ImageElement(element: el, scale: scale),
       _ => _GenericElement(element: el, scale: scale),
     };
     return Positioned(
@@ -375,7 +349,7 @@ class _LargePreview extends StatelessWidget {
       top: el.y * scale,
       width: el.width * scale,
       height: el.height * scale,
-      child: Opacity(opacity: (el.opacity / 100.0).clamp(0.0, 1.0), child: child),
+      child: Opacity(opacity: el.normalizedOpacity, child: child),
     );
   }
 }
@@ -530,60 +504,6 @@ class _ImageElement extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _ShapeElement extends StatelessWidget {
-  final TemplateElement element;
-  final double scale;
-
-  const _ShapeElement({required this.element, required this.scale});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorHex = element.properties['fill'] as String? ??
-        element.properties['color'] as String?;
-    final borderRadius =
-        (element.properties['borderRadius'] as num?)?.toDouble() ?? 0;
-    final shapeType = element.properties['shapeType'] as String? ?? 'rect';
-    final strokeHex = element.properties['stroke'] as String?;
-    final strokeWidth =
-        (element.properties['strokeWidth'] as num?)?.toDouble();
-
-    Color? fillColor;
-    if (colorHex != null && colorHex.isNotEmpty) {
-      fillColor = _parseHexColor(colorHex);
-    }
-
-    Color? strokeColor;
-    if (strokeHex != null && strokeHex.isNotEmpty) {
-      strokeColor = _parseHexColor(strokeHex);
-    }
-
-    final isCircle = shapeType == 'circle';
-
-    return Container(
-      decoration: BoxDecoration(
-        color: fillColor ?? Colors.transparent,
-        shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
-        borderRadius: !isCircle && borderRadius > 0
-            ? BorderRadius.circular(borderRadius * scale)
-            : null,
-        border: strokeColor != null && strokeWidth != null && strokeWidth > 0
-            ? Border.all(color: strokeColor, width: strokeWidth * scale)
-            : fillColor == null
-                ? Border.all(
-                    color: AppColors.border.withAlpha(120), width: 0.5)
-                : null,
-      ),
-    );
-  }
-
-  static Color? _parseHexColor(String hex) {
-    hex = hex.replaceFirst('#', '');
-    final value = int.tryParse(hex, radix: 16);
-    if (value == null) return null;
-    return Color(hex.length == 6 ? 0xFF000000 | value : value);
   }
 }
 
