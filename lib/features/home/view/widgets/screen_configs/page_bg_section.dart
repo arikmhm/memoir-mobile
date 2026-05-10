@@ -2,44 +2,49 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:video_player/video_player.dart';
 
-import '../../../../shared/core/theme/app_colors.dart';
-import '../../../../shared/core/theme/app_spacing.dart';
-import '../../../../shared/data/datasources/storage_service.dart';
-import '../../../../shared/widgets/memoir_button.dart';
-import '../../../../shared/widgets/memoir_tab_toggle.dart';
+import '../../../../../shared/core/theme/app_colors.dart';
+import '../../../../../shared/core/theme/app_spacing.dart';
+import '../../../../../shared/core/widgets/noise_background.dart';
+import '../../../../../shared/data/datasources/storage_service.dart';
+import '../../../../../shared/widgets/memoir_button.dart';
+import '../../../../../shared/widgets/memoir_section_card.dart';
+import '../../../../../shared/widgets/memoir_tab_toggle.dart';
 
-/// Screensaver configuration section.
+/// Settings section for configuring a per-page background image/video.
 ///
-/// Toggle Default/Custom (like printer BT/USB toggle),
-/// with a tall preview filling available height.
-class ScreensaverConfigSection extends StatefulWidget {
+/// [pageKey] must match the key used by [PageBackground] on the actual screen.
+class PageBgSection extends StatefulWidget {
   final StorageService storageService;
+  final String pageKey;
 
-  const ScreensaverConfigSection({
+  const PageBgSection({
     super.key,
     required this.storageService,
+    required this.pageKey,
   });
 
   @override
-  State<ScreensaverConfigSection> createState() =>
-      _ScreensaverConfigSectionState();
+  State<PageBgSection> createState() => _PageBgSectionState();
 }
 
-class _ScreensaverConfigSectionState extends State<ScreensaverConfigSection> {
+class _PageBgSectionState extends State<PageBgSection> {
   bool _isCustom = false;
+  bool _isSaving = false;
   String? _filePath;
 
   static const _videoExtensions = {'.mp4', '.mov', '.avi', '.mkv', '.webm'};
+  static const _previewHeight = 280.0;
 
   @override
   void initState() {
     super.initState();
-    final type = widget.storageService.screensaverType;
+    final type = widget.storageService.pageBgType(widget.pageKey);
     _isCustom = type == 'image' || type == 'video';
-    _filePath = widget.storageService.screensaverFilePath;
+    _filePath = widget.storageService.pageBgFilePath(widget.pageKey);
   }
 
   bool get _isVideo {
@@ -54,13 +59,11 @@ class _ScreensaverConfigSectionState extends State<ScreensaverConfigSection> {
 
   Future<void> _setCustom() async {
     setState(() => _isCustom = true);
-    await widget.storageService.setScreensaverType('image');
+    await widget.storageService.setPageBgType(widget.pageKey, 'image');
   }
 
   Future<void> _pickFile() async {
-    final picker = ImagePicker();
-
-    final picked = await showModalBottomSheet<XFile>(
+    final sourceType = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
@@ -85,24 +88,12 @@ class _ScreensaverConfigSectionState extends State<ScreensaverConfigSection> {
               _PickerOption(
                 icon: Icons.image_outlined,
                 label: 'Gambar',
-                onTap: () async {
-                  final file = await picker.pickImage(
-                    source: ImageSource.gallery,
-                    maxWidth: 2048,
-                    maxHeight: 2048,
-                  );
-                  if (ctx.mounted) Navigator.pop(ctx, file);
-                },
+                onTap: () => Navigator.pop(ctx, 'image'),
               ),
               _PickerOption(
                 icon: Icons.videocam_outlined,
                 label: 'Video',
-                onTap: () async {
-                  final file = await picker.pickVideo(
-                    source: ImageSource.gallery,
-                  );
-                  if (ctx.mounted) Navigator.pop(ctx, file);
-                },
+                onTap: () => Navigator.pop(ctx, 'video'),
               ),
             ],
           ),
@@ -110,34 +101,55 @@ class _ScreensaverConfigSectionState extends State<ScreensaverConfigSection> {
       ),
     );
 
-    if (picked == null) return;
+    if (sourceType == null || !mounted) return;
+
+    final picker = ImagePicker();
+    XFile? picked;
+    if (sourceType == 'image') {
+      picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 2048,
+        maxHeight: 2048,
+      );
+    } else {
+      picked = await picker.pickVideo(source: ImageSource.gallery);
+    }
+
+    if (picked == null || !mounted) return;
     await _saveFile(picked.path);
   }
 
   Future<void> _saveFile(String sourcePath) async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final ext = p.extension(sourcePath).toLowerCase();
-    final fileName = 'screensaver_bg$ext';
-    final savedFile = await File(sourcePath).copy(
-      p.join(appDir.path, fileName),
-    );
+    setState(() => _isSaving = true);
+    try {
+      if (_filePath != null) {
+        final old = File(_filePath!);
+        if (old.existsSync()) await old.delete();
+      }
 
-    final isVideo = _videoExtensions.contains(ext);
-    await widget.storageService.setScreensaverType(
-      isVideo ? 'video' : 'image',
-    );
-    await widget.storageService.setScreensaverFilePath(savedFile.path);
-    setState(() => _filePath = savedFile.path);
+      final appDir = await getApplicationDocumentsDirectory();
+      final ext = p.extension(sourcePath).toLowerCase();
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final savedFile = await File(sourcePath).copy(
+        p.join(appDir.path, '${widget.pageKey}_bg_$ts$ext'),
+      );
+      final isVideo = _videoExtensions.contains(ext);
+      await widget.storageService
+          .setPageBgType(widget.pageKey, isVideo ? 'video' : 'image');
+      await widget.storageService
+          .setPageBgFilePath(widget.pageKey, savedFile.path);
+      if (mounted) setState(() => _filePath = savedFile.path);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   Future<void> _removeFile() async {
     if (_filePath != null) {
       final file = File(_filePath!);
-      if (file.existsSync()) {
-        await file.delete();
-      }
+      if (file.existsSync()) await file.delete();
     }
-    await widget.storageService.clearScreensaver();
+    await widget.storageService.clearPageBg(widget.pageKey);
     setState(() => _filePath = null);
   }
 
@@ -145,43 +157,41 @@ class _ScreensaverConfigSectionState extends State<ScreensaverConfigSection> {
   Widget build(BuildContext context) {
     final hasFile = _filePath != null && File(_filePath!).existsSync();
 
-    // Calculate available height for preview:
-    // screen height - top bar (~56) - tabs bar (~48) - padding - toggle - buttons
-    final screenHeight = MediaQuery.of(context).size.height;
-    final previewHeight = (screenHeight - 280).clamp(200.0, 800.0);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return MemoirSectionCard(
+      label: 'Latar Belakang',
+      subtitle: 'Atur tampilan latar belakang halaman ini.',
+      icon: Icons.wallpaper_outlined,
       children: [
-        // ── Toggle: Default / Custom ──
         MemoirTabToggle<bool>(
           items: const [
-            MemoirTabItem(value: false, label: 'Default', icon: Icons.text_fields),
-            MemoirTabItem(value: true, label: 'Custom', icon: Icons.wallpaper_outlined),
+            MemoirTabItem(
+                value: false, label: 'Default', icon: Icons.text_fields),
+            MemoirTabItem(
+                value: true,
+                label: 'Custom',
+                icon: Icons.wallpaper_outlined),
           ],
           selected: _isCustom,
           onChanged: (value) => value ? _setCustom() : _setDefault(),
         ),
         const SizedBox(height: AppSpacing.md),
-
-        // ── Preview area ──
         if (!_isCustom)
-          _DefaultPreview(height: previewHeight)
+          const _DefaultPreview(height: _previewHeight)
         else ...[
           if (hasFile) ...[
-            // ── File preview ──
             if (_isVideo)
-              _VideoPreview(filePath: _filePath!, height: previewHeight)
+              _VideoPreview(filePath: _filePath!, height: _previewHeight)
             else
-              _ImagePreview(filePath: _filePath!, height: previewHeight),
+              _ImagePreview(filePath: _filePath!, height: _previewHeight),
             const SizedBox(height: AppSpacing.sm + 2),
             Row(
               children: [
                 Expanded(
                   child: MemoirButton.outlined(
-                    label: 'Ganti',
-                    icon: Icons.swap_horiz,
-                    onPressed: _pickFile,
+                    label: _isSaving ? 'Menyimpan...' : 'Ganti',
+                    icon: _isSaving ? null : Icons.swap_horiz,
+                    isLoading: _isSaving,
+                    onPressed: _isSaving ? null : _pickFile,
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
@@ -190,16 +200,15 @@ class _ScreensaverConfigSectionState extends State<ScreensaverConfigSection> {
                     label: 'Hapus',
                     icon: Icons.delete_outline,
                     color: AppColors.error,
-                    onPressed: _removeFile,
+                    onPressed: _isSaving ? null : _removeFile,
                   ),
                 ),
               ],
             ),
           ] else ...[
-            // ── Empty placeholder ──
             Container(
               width: double.infinity,
-              height: previewHeight,
+              height: _previewHeight,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
@@ -218,19 +227,18 @@ class _ScreensaverConfigSectionState extends State<ScreensaverConfigSection> {
                   SizedBox(height: AppSpacing.sm),
                   Text(
                     'Pilih gambar atau video',
-                    style: TextStyle(
-                      color: AppColors.textDisabled,
-                      fontSize: 13,
-                    ),
+                    style:
+                        TextStyle(color: AppColors.textDisabled, fontSize: 13),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: AppSpacing.sm + 2),
             MemoirButton.filled(
-              label: 'Pilih Media',
-              icon: Icons.upload_outlined,
-              onPressed: _pickFile,
+              label: _isSaving ? 'Menyimpan...' : 'Pilih Media',
+              icon: _isSaving ? null : Icons.upload_outlined,
+              isLoading: _isSaving,
+              onPressed: _isSaving ? null : _pickFile,
             ),
           ],
         ],
@@ -239,49 +247,26 @@ class _ScreensaverConfigSectionState extends State<ScreensaverConfigSection> {
   }
 }
 
-// ─── Default screensaver preview ────────────────────────────────
-
 class _DefaultPreview extends StatelessWidget {
   final double height;
   const _DefaultPreview({required this.height});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: height,
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: double.infinity,
+        height: height,
+        child: const Stack(
           children: [
-            const Text(
-              'memoir.',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.w300,
-                letterSpacing: 4,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Container(
-              width: 28,
-              height: 1,
-              color: AppColors.border,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            const Text(
-              'TAP UNTUK MULAI',
-              style: TextStyle(
-                fontSize: 11,
-                color: AppColors.textDisabled,
-                letterSpacing: 2,
-                fontWeight: FontWeight.w400,
+            Positioned.fill(child: ColoredBox(color: AppColors.surface)),
+            Positioned.fill(child: RepaintBoundary(child: NoiseBackground())),
+            Center(
+              child: Text(
+                'Default Background',
+                style:
+                    TextStyle(fontSize: 13, color: AppColors.textSecondary),
               ),
             ),
           ],
@@ -290,8 +275,6 @@ class _DefaultPreview extends StatelessWidget {
     );
   }
 }
-
-// ─── Image preview ──────────────────────────────────────────────
 
 class _ImagePreview extends StatelessWidget {
   final String filePath;
@@ -324,47 +307,65 @@ class _ImagePreview extends StatelessWidget {
   }
 }
 
-// ─── Video preview ──────────────────────────────────────────────
-
-class _VideoPreview extends StatelessWidget {
+class _VideoPreview extends StatefulWidget {
   final String filePath;
   final double height;
   const _VideoPreview({required this.filePath, required this.height});
 
   @override
+  State<_VideoPreview> createState() => _VideoPreviewState();
+}
+
+class _VideoPreviewState extends State<_VideoPreview> {
+  late VideoPlayerController _controller;
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.file(File(widget.filePath));
+    _controller.initialize().then((_) {
+      if (!mounted) return;
+      _controller.setLooping(true);
+      _controller.setVolume(0);
+      _controller.play();
+      setState(() => _initialized = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: height,
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.play_circle_outline,
-              size: 48,
-              color: Colors.white54,
-            ),
-            SizedBox(height: AppSpacing.sm),
-            Text(
-              'Video tersimpan',
-              style: TextStyle(
-                color: Colors.white54,
-                fontSize: 13,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: double.infinity,
+        height: widget.height,
+        child: _initialized
+            ? FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: _controller.value.size.width,
+                  height: _controller.value.size.height,
+                  child: VideoPlayer(_controller),
+                ),
+              )
+            : const ColoredBox(
+                color: Colors.black,
+                child: Center(
+                  child: CircularProgressIndicator(
+                      color: Colors.white54, strokeWidth: 2),
+                ),
               ),
-            ),
-          ],
-        ),
       ),
     );
   }
 }
-
-// ─── Picker option in bottom sheet ──────────────────────────────
 
 class _PickerOption extends StatelessWidget {
   final IconData icon;

@@ -9,21 +9,16 @@ import '../../app/bloc/app_cubit.dart';
 import '../../startup/data/repositories/startup_repository.dart';
 import '../data/services/camera_test_service.dart';
 import '../data/services/printer_test_service.dart';
-import 'settings_state.dart';
+import 'home_state.dart';
 
-/// Settings Cubit — handles camera test, printer management, and template sync.
-///
-/// Camera always uses front camera at max resolution (no user config).
-/// Printer list is retained across state transitions so scan results
-/// are never lost when camera states change.
-class SettingsCubit extends Cubit<SettingsState> {
+class HomeCubit extends Cubit<HomeState> {
   final CameraTestService _cameraService;
   final PrinterTestService _printerService;
   final StorageService _storageService;
   final StartupRepository _startupRepository;
   final AppCubit _appCubit;
 
-  SettingsCubit({
+  HomeCubit({
     required CameraTestService cameraService,
     required PrinterTestService printerService,
     required StorageService storageService,
@@ -34,7 +29,7 @@ class SettingsCubit extends Cubit<SettingsState> {
         _storageService = storageService,
         _startupRepository = startupRepository,
         _appCubit = appCubit,
-        super(const SettingsInitial());
+        super(const HomeInitial());
 
   /// The camera controller for preview widget access.
   CameraController? get cameraController => _cameraService.controller;
@@ -72,7 +67,7 @@ class SettingsCubit extends Cubit<SettingsState> {
   /// Stop camera test and release resources.
   Future<void> stopCameraTest() async {
     await _cameraService.dispose();
-    emit(const SettingsInitial());
+    emit(const HomeInitial());
   }
 
   // ─── Printer Test ─────────────────────────────────────────────
@@ -132,7 +127,7 @@ class SettingsCubit extends Cubit<SettingsState> {
   /// Clear saved default printer and reset printer section.
   Future<void> clearDefaultPrinter() async {
     await _storageService.clearDefaultPrinter();
-    emit(const SettingsInitial());
+    emit(const HomeInitial());
   }
 
   // ─── Template Sync ───────────────────────────────────────────
@@ -154,7 +149,7 @@ class SettingsCubit extends Cubit<SettingsState> {
 
   /// Reset to initial state.
   void reset() {
-    emit(const SettingsInitial());
+    emit(const HomeInitial());
   }
 
   @override

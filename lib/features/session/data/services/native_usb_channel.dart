@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/services.dart';
 
 import '../../../../shared/data/services/print_channel.dart';
@@ -48,6 +46,24 @@ class NativeUsbChannel implements PrintChannel {
   /// `productId`, `deviceName`.
   static Future<List<Map<String, dynamic>>> listDevices() async {
     final result = await _channel.invokeMethod<List<dynamic>>('listDevices');
+    if (result == null) return [];
+    return result
+        .cast<Map<dynamic, dynamic>>()
+        .map((m) => m.cast<String, dynamic>())
+        .toList();
+  }
+
+  /// Diagnostic: list ALL USB devices visible to Android, without any filter.
+  ///
+  /// Use this when [listDevices] returns empty to distinguish:
+  /// - Empty list → OTG adapter tidak mengaktifkan USB host mode (masalah hardware)
+  /// - Non-empty list → device terdeteksi OS tapi difilter oleh heuristic printer
+  ///
+  /// Fields: `deviceId`, `vendorId`, `productId`, `deviceName`,
+  /// `deviceClass`, `interfaceCount`, `interfaceClasses`.
+  static Future<List<Map<String, dynamic>>> listAllDevices() async {
+    final result =
+        await _channel.invokeMethod<List<dynamic>>('listAllDevices');
     if (result == null) return [];
     return result
         .cast<Map<dynamic, dynamic>>()

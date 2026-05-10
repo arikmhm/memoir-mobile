@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -7,7 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../di.dart';
 import '../../../shared/core/theme/app_colors.dart';
-import '../../../shared/core/widgets/noise_background.dart';
+import '../../../shared/core/widgets/page_background.dart';
 import '../../../shared/core/widgets/session_countdown_bar.dart';
 import '../../../shared/core/theme/app_spacing.dart';
 import '../../../shared/core/utils/formatters.dart';
@@ -28,11 +26,7 @@ class ProcessingScreen extends StatelessWidget {
       backgroundColor: AppColors.surface,
       body: Stack(
         children: [
-          const Positioned.fill(
-            child: RepaintBoundary(
-              child: NoiseBackground(),
-            ),
-          ),
+          const Positioned.fill(child: PageBackground(pageKey: 'processing')),
           SafeArea(
             child: BlocConsumer<ProcessingCubit, ProcessingState>(
               listener: (context, state) {
@@ -53,11 +47,10 @@ class ProcessingScreen extends StatelessWidget {
                 ProcessingAwaitingPayment() => Column(
                   children: [
                     SessionCountdownBar(
-                      perPageTimeout:
-                          sl<StorageService>().paymentTimeout,
+                      perPageTimeout: sl<StorageService>().paymentTimeout,
                     ),
                     Expanded(
-                      child: _AwaitingPaymentView(state: state),
+                      child: _PgPaymentView(state: state),
                     ),
                   ],
                 ),
@@ -121,226 +114,6 @@ class _LoadingView extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ─── Awaiting Payment View ──────────────────────────────────────
-
-class _AwaitingPaymentView extends StatelessWidget {
-  final ProcessingAwaitingPayment state;
-  const _AwaitingPaymentView({required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    return switch (state.paymentMethod) {
-      'CASH' => _CashPaymentView(state: state),
-      'STATIC_QRIS' => _StaticQrisPaymentView(state: state),
-      'PG' => _PgPaymentView(state: state),
-      _ => _CashPaymentView(state: state),
-    };
-  }
-}
-
-// ─── CASH Payment View ──────────────────────────────────────────
-
-class _CashPaymentView extends StatelessWidget {
-  final ProcessingAwaitingPayment state;
-  const _CashPaymentView({required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cubit = context.read<ProcessingCubit>();
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.screenHorizontal,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.payments_outlined,
-              size: 72,
-              color: AppColors.brandPrimary,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Text(
-              'Pembayaran Tunai',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Silakan lakukan pembayaran ke petugas',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            Text(
-              'Total Pembayaran',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
-                letterSpacing: 1,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              Formatters.formatRupiah(state.transaction.totalAmount),
-              style: theme.textTheme.headlineMedium?.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-            SizedBox(
-              width: double.infinity,
-              height: AppSpacing.touchTarget + 8,
-              child: FilledButton(
-                onPressed: cubit.confirmCashPayment,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.brandPrimary,
-                  foregroundColor: AppColors.brandAccent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                child: const Text(
-                  'SUDAH BAYAR',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () => context.go('/screensaver'),
-                child: const Text('BATALKAN'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── STATIC QRIS Payment View ───────────────────────────────────
-
-class _StaticQrisPaymentView extends StatelessWidget {
-  final ProcessingAwaitingPayment state;
-  const _StaticQrisPaymentView({required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cubit = context.read<ProcessingCubit>();
-    final imagePath = state.staticQrisImagePath;
-
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.screenHorizontal,
-          vertical: AppSpacing.lg,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Scan QRIS untuk Membayar',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Arahkan kamera HP ke QR code di bawah',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            // Static QRIS image
-            Container(
-              width: 260,
-              height: 260,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border, width: 2),
-              ),
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: imagePath != null && File(imagePath).existsSync()
-                  ? Image.file(
-                      File(imagePath),
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, _, _) => const _QrPlaceholder(),
-                    )
-                  : const _QrPlaceholder(),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Text(
-              'Total Pembayaran',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
-                letterSpacing: 1,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              Formatters.formatRupiah(state.transaction.totalAmount),
-              style: theme.textTheme.headlineSmall?.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            SizedBox(
-              width: double.infinity,
-              height: AppSpacing.touchTarget + 8,
-              child: FilledButton(
-                onPressed: cubit.confirmCashPayment,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.brandPrimary,
-                  foregroundColor: AppColors.brandAccent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                child: const Text(
-                  'SUDAH BAYAR',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () => context.go('/screensaver'),
-                child: const Text('BATALKAN'),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

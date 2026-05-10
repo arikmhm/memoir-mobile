@@ -9,7 +9,11 @@ class ApiConstants {
   // Local API di port 3000, host 0.0.0.0
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://192.168.3.102:3000/api/v1',
+    // development backend di local
+    // defaultValue: 'http://192.168.3.104:3000/api/v1',
+    // development backend di railway
+    defaultValue: 'https://backend-memoir-development.up.railway.app/api/v1',
+    
   );
 
   // Mock mode — override via: flutter run --dart-define=USE_MOCK=true
@@ -24,10 +28,6 @@ class ApiConstants {
   static const String meEndpoint = '/kiosk/me';
   static const String templatesEndpoint = '/kiosk/templates';
   static const String transactionsEndpoint = '/kiosk/transactions';
-
-  /// Returns confirm-cash endpoint for a given transaction ID.
-  static String confirmCashEndpoint(String transactionId) =>
-      '/kiosk/transactions/$transactionId/confirm-cash';
 
   /// Returns check-payment endpoint for a given transaction ID.
   static String checkPaymentEndpoint(String transactionId) =>

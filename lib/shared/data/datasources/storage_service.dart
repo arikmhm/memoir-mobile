@@ -51,8 +51,11 @@ class StorageService {
   // ─── Shared Preferences (Settings) ───────────────────────────
 
   // Payment
-  String get paymentActiveMode =>
-      _prefs.getString('payment.activeMode') ?? 'CASH';
+  String get paymentActiveMode {
+    final stored = _prefs.getString('payment.activeMode') ?? 'CASH';
+    // Migrate old 'QRIS' value (pre-fix) → correct API enum 'STATIC_QRIS'.
+    return stored == 'QRIS' ? 'STATIC_QRIS' : stored;
+  }
 
   Future<void> setPaymentActiveMode(String mode) =>
       _prefs.setString('payment.activeMode', mode);
@@ -69,6 +72,19 @@ class StorageService {
 
   bool get hasStaticQrisImage =>
       staticQrisImagePath != null && staticQrisImagePath!.isNotEmpty;
+
+  // ─── Booth Operation Mode ──────────────────────────────────────
+
+  static const _boothOperationModeKey = 'booth.operationMode';
+
+  String get boothOperationMode =>
+      _prefs.getString(_boothOperationModeKey) ?? 'normal';
+
+  Future<void> setBoothOperationMode(String mode) =>
+      _prefs.setString(_boothOperationModeKey, mode);
+
+  bool get isNormalMode => boothOperationMode == 'normal';
+  bool get isEventMode => boothOperationMode == 'event';
 
   // ─── Timers / Session Timeout ─────────────────────────────────
 
@@ -100,6 +116,11 @@ class StorageService {
   Future<void> setSelectTemplateTimeout(int seconds) =>
       _prefs.setInt('timers.selectTemplateTimeout', seconds);
 
+  int get photoSessionTimeout =>
+      _prefs.getInt('timers.photoSessionTimeout') ?? 120;
+  Future<void> setPhotoSessionTimeout(int seconds) =>
+      _prefs.setInt('timers.photoSessionTimeout', seconds);
+
   int get previewTimeout =>
       _prefs.getInt('timers.previewTimeout') ?? 60;
   Future<void> setPreviewTimeout(int seconds) =>
@@ -114,6 +135,11 @@ class StorageService {
       _prefs.getInt('timers.paymentTimeout') ?? 300;
   Future<void> setPaymentTimeout(int seconds) =>
       _prefs.setInt('timers.paymentTimeout', seconds);
+
+  int get processingErrorDuration =>
+      _prefs.getInt('timers.processingErrorDuration') ?? 10;
+  Future<void> setProcessingErrorDuration(int seconds) =>
+      _prefs.setInt('timers.processingErrorDuration', seconds);
 
   int get thankYouDuration =>
       _prefs.getInt('timers.thankYouDuration') ?? 30;
@@ -187,6 +213,26 @@ class StorageService {
     await _prefs.remove(_printerConnectionTypeKey);
   }
 
+  // ─── Confirmation Settings ──────────────────────────────────
+
+  // Default total print count
+  static const _defaultPrintCountKey = 'confirmation.defaultPrintCount';
+
+  int get defaultPrintCount =>
+      _prefs.getInt(_defaultPrintCountKey) ?? 1;
+
+  Future<void> setDefaultPrintCount(int count) =>
+      _prefs.setInt(_defaultPrintCountKey, count);
+
+  // Softcopy enabled
+  static const _softcopyEnabledKey = 'confirmation.softcopyEnabled';
+
+  bool get isSoftcopyEnabled =>
+      _prefs.getBool(_softcopyEnabledKey) ?? true;
+
+  Future<void> setSoftcopyEnabled(bool enabled) =>
+      _prefs.setBool(_softcopyEnabledKey, enabled);
+
   // ─── Screensaver Config ─────────────────────────────────────
 
   static const _screensaverTypeKey = 'screensaver.type';
@@ -208,5 +254,27 @@ class StorageService {
   Future<void> clearScreensaver() async {
     await _prefs.remove(_screensaverTypeKey);
     await _prefs.remove(_screensaverFileKey);
+  }
+
+  // ─── Per-Page BG Config ──────────────────────────────────────
+
+  /// Background type for a page: 'default', 'image', or 'video'.
+  /// [pageKey] examples: 'selectTemplate', 'photoSession', 'preview',
+  /// 'confirmation', 'processing', 'thankYou'.
+  String pageBgType(String pageKey) =>
+      _prefs.getString('$pageKey.bgType') ?? 'default';
+
+  Future<void> setPageBgType(String pageKey, String type) =>
+      _prefs.setString('$pageKey.bgType', type);
+
+  String? pageBgFilePath(String pageKey) =>
+      _prefs.getString('$pageKey.bgFilePath');
+
+  Future<void> setPageBgFilePath(String pageKey, String path) =>
+      _prefs.setString('$pageKey.bgFilePath', path);
+
+  Future<void> clearPageBg(String pageKey) async {
+    await _prefs.remove('$pageKey.bgType');
+    await _prefs.remove('$pageKey.bgFilePath');
   }
 }

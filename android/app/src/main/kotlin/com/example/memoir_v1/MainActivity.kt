@@ -75,6 +75,8 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     "disconnect" -> disconnectPrinter(result)
+                    "pairedDevices" -> bluetoothPairedDevices(result)
+                    "isEnabled" -> bluetoothIsEnabled(result)
                     else -> result.notImplemented()
                 }
             }
@@ -84,6 +86,7 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "listDevices" -> usbListDevices(result)
+                    "listAllDevices" -> usbListAllDevices(result)
                     "connect" -> {
                         val deviceId = call.argument<String>("deviceId")
                         if (deviceId == null) {
@@ -191,6 +194,26 @@ class MainActivity : FlutterActivity() {
         bluetoothSocket = null
     }
 
+    /** Return all Bluetooth devices currently paired in Android settings. */
+    @Suppress("MissingPermission")
+    private fun bluetoothPairedDevices(result: MethodChannel.Result) {
+        try {
+            val adapter = BluetoothAdapter.getDefaultAdapter()
+            val devices = adapter?.bondedDevices?.map { device ->
+                mapOf("name" to (device.name ?: "Unknown"), "mac" to device.address)
+            } ?: emptyList()
+            result.success(devices)
+        } catch (e: Exception) {
+            result.success(emptyList<Any>())
+        }
+    }
+
+    /** Return true if the device Bluetooth adapter is currently enabled. */
+    private fun bluetoothIsEnabled(result: MethodChannel.Result) {
+        val adapter = BluetoothAdapter.getDefaultAdapter()
+        result.success(adapter?.isEnabled == true)
+    }
+
     // ════════════════════════════════════════════════════════════════
     // USB Host API — Bulk Transfer for thermal printers via OTG
     // ════════════════════════════════════════════════════════════════
@@ -217,6 +240,37 @@ class MainActivity : FlutterActivity() {
             }
         }
         result.success(printers)
+    }
+
+    /**
+     * Diagnostic: list ALL USB devices visible to Android, regardless of class.
+     *
+     * Use this to distinguish two failure modes:
+     *   - Empty result → OS never enumerated the device (OTG adapter not activating
+     *     USB host mode — hardware/firmware issue on this specific tablet).
+     *   - Non-empty but not in listDevices → isPrinterDevice filter rejected it
+     *     (check the class/interfaceClass fields to diagnose).
+     *
+     * Fields: deviceId, vendorId, productId, deviceName, deviceClass, interfaceCount,
+     *         interfaceClasses (comma-separated list of each interface class code).
+     */
+    private fun usbListAllDevices(result: MethodChannel.Result) {
+        val manager = getSystemService(Context.USB_SERVICE) as UsbManager
+        val all = manager.deviceList.values.map { device ->
+            val ifaceClasses = (0 until device.interfaceCount)
+                .map { device.getInterface(it).interfaceClass }
+                .joinToString(",")
+            mapOf(
+                "deviceId"       to device.deviceId.toString(),
+                "vendorId"       to device.vendorId.toString(),
+                "productId"      to device.productId.toString(),
+                "deviceName"     to (device.productName ?: "Unknown"),
+                "deviceClass"    to device.deviceClass.toString(),
+                "interfaceCount" to device.interfaceCount.toString(),
+                "interfaceClasses" to ifaceClasses,
+            )
+        }
+        result.success(all)
     }
 
     /**

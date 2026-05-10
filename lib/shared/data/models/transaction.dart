@@ -2,9 +2,7 @@ import 'package:equatable/equatable.dart';
 
 /// Transaction model.
 ///
-/// Maps to API responses:
-/// - POST /kiosk/transactions → data.transaction
-/// - POST /kiosk/transactions/:id/confirm-cash → data.transaction
+/// Maps to POST /kiosk/transactions → data.transaction
 class Transaction extends Equatable {
   final String id;
   final String orderId;

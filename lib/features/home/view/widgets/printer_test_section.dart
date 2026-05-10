@@ -8,8 +8,8 @@ import '../../../../shared/widgets/memoir_banner.dart';
 import '../../../../shared/widgets/memoir_button.dart';
 import '../../../../shared/widgets/memoir_section_card.dart';
 import '../../../../shared/widgets/memoir_tab_toggle.dart';
-import '../../bloc/settings_cubit.dart';
-import '../../bloc/settings_state.dart';
+import '../../bloc/home_cubit.dart';
+import '../../bloc/home_state.dart';
 
 /// Printer section — dashboard card style.
 ///
@@ -42,7 +42,7 @@ class _PrinterTestSectionState extends State<PrinterTestSection> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocConsumer<SettingsCubit, SettingsState>(
+    return BlocConsumer<HomeCubit, HomeState>(
       listenWhen: (_, current) =>
           current is PrinterTestSuccess || current is PrinterTestError,
       listener: (context, state) {
@@ -54,7 +54,7 @@ class _PrinterTestSectionState extends State<PrinterTestSection> {
         }
       },
       buildWhen: (_, current) =>
-          current is SettingsInitial ||
+          current is HomeInitial ||
           current is PrinterScanInProgress ||
           current is PrinterScanComplete ||
           current is PrinterSaved ||
@@ -62,7 +62,7 @@ class _PrinterTestSectionState extends State<PrinterTestSection> {
           current is PrinterTestSuccess ||
           current is PrinterTestError,
       builder: (context, state) {
-        final cubit = context.read<SettingsCubit>();
+        final cubit = context.read<HomeCubit>();
         final isScanning = state is PrinterScanInProgress;
         final savedPrinter = _activePrinter(state) ?? cubit.savedPrinter;
         final isBusy = isScanning || state is PrinterTestInProgress;
@@ -173,7 +173,7 @@ class _PrinterTestSectionState extends State<PrinterTestSection> {
     );
   }
 
-  PrinterInfo? _activePrinter(SettingsState state) {
+  PrinterInfo? _activePrinter(HomeState state) {
     if (state is PrinterSaved) return state.printer;
     if (state is PrinterTestInProgress) return state.printer;
     if (state is PrinterTestSuccess) return state.printer;
@@ -185,7 +185,7 @@ class _PrinterTestSectionState extends State<PrinterTestSection> {
 // ─── Private widgets ────────────────────────────────────────────────
 
 class _StatusBadge extends StatelessWidget {
-  final SettingsState state;
+  final HomeState state;
   const _StatusBadge({required this.state});
 
   @override
@@ -225,7 +225,7 @@ class _SavedPrinterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cubit = context.read<SettingsCubit>();
+    final cubit = context.read<HomeCubit>();
     final isUsb = printer.connectionType == PrinterConnectionType.usb;
 
     return Container(

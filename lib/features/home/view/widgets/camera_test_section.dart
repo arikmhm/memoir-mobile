@@ -6,8 +6,8 @@ import '../../../../shared/core/theme/app_colors.dart';
 import '../../../../shared/core/theme/app_spacing.dart';
 import '../../../../shared/widgets/memoir_button.dart';
 import '../../../../shared/widgets/memoir_section_card.dart';
-import '../../bloc/settings_cubit.dart';
-import '../../bloc/settings_state.dart';
+import '../../bloc/home_cubit.dart';
+import '../../bloc/home_state.dart';
 
 /// Camera test section — dashboard card style.
 ///
@@ -17,14 +17,14 @@ class CameraTestSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<SettingsCubit, SettingsState>(
+    return BlocBuilder<HomeCubit, HomeState>(
       buildWhen: (previous, current) =>
-          current is SettingsInitial ||
+          current is HomeInitial ||
           current is CameraTestInProgress ||
           current is CameraTestSuccess ||
           current is CameraTestError,
       builder: (context, state) {
-        final cubit = context.read<SettingsCubit>();
+        final cubit = context.read<HomeCubit>();
         final isTesting = state is CameraTestInProgress;
         final isActive = state is CameraTestSuccess;
 
@@ -138,7 +138,7 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 class _StatusBadge extends StatelessWidget {
-  final SettingsState state;
+  final HomeState state;
 
   const _StatusBadge({required this.state});
 

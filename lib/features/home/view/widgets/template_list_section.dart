@@ -10,13 +10,13 @@ import '../../../../shared/widgets/memoir_banner.dart';
 import '../../../../shared/widgets/memoir_button.dart';
 import '../../../app/bloc/app_cubit.dart';
 import '../../../app/bloc/app_state.dart';
-import '../../bloc/settings_cubit.dart';
-import '../../bloc/settings_state.dart';
+import '../../bloc/home_cubit.dart';
+import '../../bloc/home_state.dart';
 
 /// Template list section — displays synced templates with sync button.
 ///
 /// Reads templates from AppCubit (AppReady state).
-/// Sync triggers StartupRepository via SettingsCubit.
+/// Sync triggers StartupRepository via HomeCubit.
 class TemplateListSection extends StatefulWidget {
   const TemplateListSection({super.key});
 
@@ -46,7 +46,7 @@ class _TemplateListSectionState extends State<TemplateListSection> {
         ? appState.templates.cast<Template>()
         : <Template>[];
 
-    return BlocListener<SettingsCubit, SettingsState>(
+    return BlocListener<HomeCubit, HomeState>(
       listenWhen: (_, current) =>
           current is TemplateSyncSuccess || current is TemplateSyncError,
       listener: (context, state) {
@@ -60,69 +60,70 @@ class _TemplateListSectionState extends State<TemplateListSection> {
           _showBanner(state.message, MemoirBannerType.error);
         }
       },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Inline banner ──
-          if (_bannerMessage != null) ...[
-            MemoirBanner(
-              message: _bannerMessage!,
-              type: _bannerType ?? MemoirBannerType.info,
-              onDismiss: _dismissBanner,
-            ),
-            const SizedBox(height: AppSpacing.md),
-          ],
-
-          // ── Sync button ──
-          BlocBuilder<SettingsCubit, SettingsState>(
-            buildWhen: (_, current) =>
-                current is SettingsInitial ||
-                current is TemplateSyncInProgress ||
-                current is TemplateSyncSuccess ||
-                current is TemplateSyncError,
-            builder: (context, state) {
-              final isSyncing = state is TemplateSyncInProgress;
-              return MemoirButton.filled(
-                label: isSyncing ? 'Sinkronisasi...' : 'Sinkronisasi Template',
-                icon: isSyncing ? null : Icons.sync,
-                isLoading: isSyncing,
-                onPressed:
-                    isSyncing ? null : context.read<SettingsCubit>().syncTemplates,
-              );
-            },
-          ),
-          const SizedBox(height: AppSpacing.md),
-
-          // ── Template count ──
-          Text(
-            'TEMPLATE (${templates.length})',
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textSecondary,
-              letterSpacing: 1.0,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-
-          // ── Template grid (2 columns) ──
-          if (templates.isEmpty)
-            const _EmptyState()
-          else
-            Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.sm,
-              children: templates.map(
-                (t) => SizedBox(
-                  width: (MediaQuery.of(context).size.width -
-                          AppSpacing.screenHorizontal * 2 -
-                          AppSpacing.sm) /
-                      2,
-                  child: _TemplateCard(template: t),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Inline banner ──
+              if (_bannerMessage != null) ...[
+                MemoirBanner(
+                  message: _bannerMessage!,
+                  type: _bannerType ?? MemoirBannerType.info,
+                  onDismiss: _dismissBanner,
                 ),
-              ).toList(),
-            ),
-        ],
+                const SizedBox(height: AppSpacing.md),
+              ],
+
+              // ── Sync button ──
+              BlocBuilder<HomeCubit, HomeState>(
+                buildWhen: (_, current) =>
+                    current is HomeInitial ||
+                    current is TemplateSyncInProgress ||
+                    current is TemplateSyncSuccess ||
+                    current is TemplateSyncError,
+                builder: (context, state) {
+                  final isSyncing = state is TemplateSyncInProgress;
+                  return MemoirButton.filled(
+                    label: isSyncing ? 'Sinkronisasi...' : 'Sinkronisasi Template',
+                    icon: isSyncing ? null : Icons.sync,
+                    isLoading: isSyncing,
+                    onPressed:
+                        isSyncing ? null : context.read<HomeCubit>().syncTemplates,
+                  );
+                },
+              ),
+              const SizedBox(height: AppSpacing.md),
+
+              // ── Template count ──
+              Text(
+                'TEMPLATE (${templates.length})',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                  letterSpacing: 1.0,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+
+              // ── Template grid (2 columns) ──
+              if (templates.isEmpty)
+                const _EmptyState()
+              else
+                Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: templates.map(
+                    (t) => SizedBox(
+                      width: (constraints.maxWidth - AppSpacing.sm) / 2,
+                      child: _TemplateCard(template: t),
+                    ),
+                  ).toList(),
+                ),
+            ],
+          );
+        },
       ),
     );
   }

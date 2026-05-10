@@ -20,35 +20,28 @@ class PrinterInfo extends Equatable {
   List<Object?> get props => [name, address, connectionType, isConnected];
 }
 
-/// Settings feature states.
-///
-/// Per PRD-05 FEAT-MR-10: Device diagnostic — camera test & printer test.
-sealed class SettingsState extends Equatable {
-  const SettingsState();
+sealed class HomeState extends Equatable {
+  const HomeState();
 
   @override
   List<Object?> get props => [];
 }
 
-/// Initial state — settings loaded, no test running.
-final class SettingsInitial extends SettingsState {
-  const SettingsInitial();
+final class HomeInitial extends HomeState {
+  const HomeInitial();
 }
 
 // ─── Camera Test States ────────────────────────────────────────────
 
-/// Camera test is initializing.
-final class CameraTestInProgress extends SettingsState {
+final class CameraTestInProgress extends HomeState {
   const CameraTestInProgress();
 }
 
-/// Camera test succeeded — camera is active and preview available.
-final class CameraTestSuccess extends SettingsState {
+final class CameraTestSuccess extends HomeState {
   const CameraTestSuccess();
 }
 
-/// Camera test failed.
-final class CameraTestError extends SettingsState {
+final class CameraTestError extends HomeState {
   final String message;
 
   const CameraTestError({required this.message});
@@ -59,13 +52,11 @@ final class CameraTestError extends SettingsState {
 
 // ─── Printer Test States ───────────────────────────────────────────
 
-/// Scanning for BLE printers.
-final class PrinterScanInProgress extends SettingsState {
+final class PrinterScanInProgress extends HomeState {
   const PrinterScanInProgress();
 }
 
-/// Scan complete — list of discovered printers for selection.
-final class PrinterScanComplete extends SettingsState {
+final class PrinterScanComplete extends HomeState {
   final List<PrinterInfo> printers;
 
   const PrinterScanComplete({required this.printers});
@@ -74,8 +65,7 @@ final class PrinterScanComplete extends SettingsState {
   List<Object?> get props => [printers];
 }
 
-/// Printer selected & saved — ready for test print.
-final class PrinterSaved extends SettingsState {
+final class PrinterSaved extends HomeState {
   final PrinterInfo printer;
 
   const PrinterSaved({required this.printer});
@@ -85,7 +75,7 @@ final class PrinterSaved extends SettingsState {
 }
 
 /// Printer test print in progress.
-final class PrinterTestInProgress extends SettingsState {
+final class PrinterTestInProgress extends HomeState {
   final PrinterInfo printer;
 
   const PrinterTestInProgress({required this.printer});
@@ -95,7 +85,7 @@ final class PrinterTestInProgress extends SettingsState {
 }
 
 /// Printer test print succeeded.
-final class PrinterTestSuccess extends SettingsState {
+final class PrinterTestSuccess extends HomeState {
   final PrinterInfo printer;
 
   const PrinterTestSuccess({required this.printer});
@@ -105,7 +95,7 @@ final class PrinterTestSuccess extends SettingsState {
 }
 
 /// Printer test print failed.
-final class PrinterTestError extends SettingsState {
+final class PrinterTestError extends HomeState {
   final String message;
   final PrinterInfo printer;
 
@@ -118,12 +108,12 @@ final class PrinterTestError extends SettingsState {
 // ─── Template Sync States ─────────────────────────────────────────
 
 /// Template sync in progress.
-final class TemplateSyncInProgress extends SettingsState {
+final class TemplateSyncInProgress extends HomeState {
   const TemplateSyncInProgress();
 }
 
 /// Template sync succeeded.
-final class TemplateSyncSuccess extends SettingsState {
+final class TemplateSyncSuccess extends HomeState {
   final int count;
 
   const TemplateSyncSuccess({required this.count});
@@ -133,7 +123,7 @@ final class TemplateSyncSuccess extends SettingsState {
 }
 
 /// Template sync failed.
-final class TemplateSyncError extends SettingsState {
+final class TemplateSyncError extends HomeState {
   final String message;
 
   const TemplateSyncError({required this.message});

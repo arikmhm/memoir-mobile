@@ -98,8 +98,8 @@ class _ScreensaverScreenState extends State<ScreensaverScreen>
 
     if (_hiddenTaps.length >= _requiredTaps) {
       _hiddenTaps.clear();
-      context.push('/settings').then((_) {
-        // Reload config when returning from settings
+      context.push('/home').then((_) {
+        // Reload config when returning from home
         if (mounted) {
           _videoController?.dispose();
           _videoController = null;

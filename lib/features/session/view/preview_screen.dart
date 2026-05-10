@@ -6,10 +6,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../../di.dart';
 import '../../../shared/core/theme/app_colors.dart';
-import '../../../shared/core/widgets/noise_background.dart';
+import '../../../shared/core/widgets/page_background.dart';
 import '../../../shared/core/widgets/session_countdown_bar.dart';
 import '../../../shared/core/theme/app_spacing.dart';
 import '../../../shared/data/datasources/storage_service.dart';
+import '../../../shared/data/models/kiosk_config.dart';
 import '../../../shared/data/models/template.dart';
 import '../../app/bloc/app_cubit.dart';
 import '../../app/bloc/app_state.dart';
@@ -46,10 +47,38 @@ class PreviewScreen extends StatelessWidget {
   }
 
   void _proceed(BuildContext context) {
-    context.go(
-      '/confirmation/$templateId',
-      extra: Map<int, String>.from(capturedPhotos),
-    );
+    final storage = sl<StorageService>();
+
+    if (storage.isEventMode) {
+      final template = _findTemplate(context);
+      final configJson = storage.kioskConfigJson;
+      if (template == null || configJson == null) {
+        context.go('/screensaver');
+        return;
+      }
+      final config = KioskConfig.fromJsonString(configJson);
+      final printQty = storage.defaultPrintCount;
+      final hasDigitalCopy = storage.isSoftcopyEnabled;
+      final extraPrintTotal =
+          printQty > 1 ? (printQty - 1) * config.pricePerExtraPrint : 0;
+      final total = config.priceBaseSession +
+          extraPrintTotal +
+          (hasDigitalCopy ? config.priceDigitalCopy : 0);
+
+      context.go('/processing', extra: {
+        'template': template,
+        'capturedPhotos': Map<int, String>.from(capturedPhotos),
+        'paymentMethod': storage.paymentActiveMode,
+        'printQty': printQty,
+        'hasDigitalCopy': hasDigitalCopy,
+        'totalAmount': total,
+      });
+    } else {
+      context.go(
+        '/confirmation/$templateId',
+        extra: Map<int, String>.from(capturedPhotos),
+      );
+    }
   }
 
   @override
@@ -92,11 +121,7 @@ class PreviewScreen extends StatelessWidget {
       backgroundColor: AppColors.surface,
       body: Stack(
         children: [
-          const Positioned.fill(
-            child: RepaintBoundary(
-              child: NoiseBackground(),
-            ),
-          ),
+          const Positioned.fill(child: PageBackground(pageKey: 'preview')),
           SafeArea(
         child: Column(
           children: [

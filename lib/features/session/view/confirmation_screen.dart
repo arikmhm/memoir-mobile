@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../di.dart';
 import '../../../shared/core/theme/app_colors.dart';
-import '../../../shared/core/widgets/noise_background.dart';
+import '../../../shared/core/widgets/page_background.dart';
 import '../../../shared/core/widgets/session_countdown_bar.dart';
 import '../../../shared/core/theme/app_spacing.dart';
 import '../../../shared/core/utils/formatters.dart';
@@ -39,8 +39,16 @@ class ConfirmationScreen extends StatefulWidget {
 }
 
 class _ConfirmationScreenState extends State<ConfirmationScreen> {
-  int _printQty = 1;
-  bool _hasDigitalCopy = true;
+  late int _printQty;
+  late bool _hasDigitalCopy;
+
+  @override
+  void initState() {
+    super.initState();
+    final storage = sl<StorageService>();
+    _printQty = storage.defaultPrintCount;
+    _hasDigitalCopy = storage.isSoftcopyEnabled;
+  }
 
   Template? _findTemplate() {
     final appState = context.read<AppCubit>().state;
@@ -145,12 +153,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
       backgroundColor: AppColors.surface,
       body: Stack(
         children: [
-          // Noise texture background
-          const Positioned.fill(
-            child: RepaintBoundary(
-              child: NoiseBackground(),
-            ),
-          ),
+          const Positioned.fill(child: PageBackground(pageKey: 'confirmation')),
           SafeArea(
         child: Column(
           children: [

@@ -7,7 +7,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../di.dart';
 import '../../../shared/core/theme/app_colors.dart';
-import '../../../shared/core/widgets/noise_background.dart';
+import '../../../shared/core/widgets/page_background.dart';
+import '../../../shared/core/widgets/session_countdown_bar.dart';
 import '../../../shared/core/theme/app_spacing.dart';
 import '../../../shared/data/datasources/storage_service.dart';
 import '../../../shared/data/models/template.dart';
@@ -237,14 +238,15 @@ class _PhotoSessionScreenState extends State<PhotoSessionScreen>
       backgroundColor: AppColors.surface,
       body: Stack(
         children: [
-          const Positioned.fill(
-            child: RepaintBoundary(
-              child: NoiseBackground(),
-            ),
-          ),
+          const Positioned.fill(child: PageBackground(pageKey: 'photoSession')),
           SafeArea(
         child: Column(
           children: [
+            // ── Session countdown ──
+            SessionCountdownBar(
+              perPageTimeout: sl<StorageService>().photoSessionTimeout,
+            ),
+
             // ── Template preview with live camera ──
             Expanded(
               child: Padding(

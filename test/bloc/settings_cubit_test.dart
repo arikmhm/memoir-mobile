@@ -4,10 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
 import 'package:memoir_v1/features/app/bloc/app_cubit.dart';
-import 'package:memoir_v1/features/settings/bloc/settings_cubit.dart';
-import 'package:memoir_v1/features/settings/bloc/settings_state.dart';
-import 'package:memoir_v1/features/settings/data/services/camera_test_service.dart';
-import 'package:memoir_v1/features/settings/data/services/printer_test_service.dart';
+import 'package:memoir_v1/features/home/bloc/home_cubit.dart';
+import 'package:memoir_v1/features/home/bloc/home_state.dart';
+import 'package:memoir_v1/features/home/data/services/camera_test_service.dart';
+import 'package:memoir_v1/features/home/data/services/printer_test_service.dart';
 import 'package:memoir_v1/features/startup/data/repositories/startup_repository.dart';
 import 'package:memoir_v1/shared/data/datasources/storage_service.dart';
 
@@ -37,7 +37,7 @@ void main() {
     mockStartupRepository = MockStartupRepository();
     mockAppCubit = MockAppCubit();
 
-    // Stub dispose methods — called by SettingsCubit.close().
+    // Stub dispose methods — called by HomeCubit.close().
     when(() => mockCameraService.dispose()).thenAnswer((_) async {});
     when(() => mockPrinterService.dispose()).thenAnswer((_) async {});
 
@@ -48,7 +48,7 @@ void main() {
 
   });
 
-  SettingsCubit buildCubit() => SettingsCubit(
+  HomeCubit buildCubit() => HomeCubit(
         cameraService: mockCameraService,
         printerService: mockPrinterService,
         storageService: mockStorageService,
@@ -56,17 +56,17 @@ void main() {
         appCubit: mockAppCubit,
       );
 
-  group('SettingsCubit', () {
-    test('initial state is SettingsInitial', () {
+  group('HomeCubit', () {
+    test('initial state is HomeInitial', () {
       final cubit = buildCubit();
-      expect(cubit.state, equals(const SettingsInitial()));
+      expect(cubit.state, equals(const HomeInitial()));
       cubit.close();
     });
 
     // ─── Camera Test ─────────────────────────────────────────────
 
     group('startCameraTest', () {
-      blocTest<SettingsCubit, SettingsState>(
+      blocTest<HomeCubit, HomeState>(
         'emits [CameraTestInProgress, CameraTestSuccess] on success',
         build: () {
           when(() => mockCameraService.initialize())
@@ -81,7 +81,7 @@ void main() {
         },
       );
 
-      blocTest<SettingsCubit, SettingsState>(
+      blocTest<HomeCubit, HomeState>(
         'emits [CameraTestInProgress, CameraTestError] on CameraException',
         build: () {
           when(() => mockCameraService.initialize()).thenThrow(
@@ -96,7 +96,7 @@ void main() {
         ],
       );
 
-      blocTest<SettingsCubit, SettingsState>(
+      blocTest<HomeCubit, HomeState>(
         'emits [CameraTestInProgress, CameraTestError] on generic exception',
         build: () {
           when(() => mockCameraService.initialize())
@@ -113,14 +113,14 @@ void main() {
     });
 
     group('stopCameraTest', () {
-      blocTest<SettingsCubit, SettingsState>(
-        'emits [SettingsInitial] after stopping camera',
+      blocTest<HomeCubit, HomeState>(
+        'emits [HomeInitial] after stopping camera',
         build: () {
           when(() => mockCameraService.dispose()).thenAnswer((_) async {});
           return buildCubit();
         },
         act: (cubit) => cubit.stopCameraTest(),
-        expect: () => [const SettingsInitial()],
+        expect: () => [const HomeInitial()],
         verify: (_) {
           verify(
             () => mockCameraService.dispose(),
@@ -132,7 +132,7 @@ void main() {
     // ─── Printer Test ────────────────────────────────────────────
 
     group('scanPrinters', () {
-      blocTest<SettingsCubit, SettingsState>(
+      blocTest<HomeCubit, HomeState>(
         'emits [PrinterScanInProgress, PrinterScanComplete] on success',
         build: () {
           when(() => mockPrinterService.scanBluetoothPrinters()).thenAnswer(
@@ -156,7 +156,7 @@ void main() {
         ],
       );
 
-      blocTest<SettingsCubit, SettingsState>(
+      blocTest<HomeCubit, HomeState>(
         'emits [PrinterScanInProgress, PrinterTestError] on failure',
         build: () {
           when(
@@ -182,7 +182,7 @@ void main() {
         address: 'AA:BB:CC:DD:EE:FF',
       );
 
-      blocTest<SettingsCubit, SettingsState>(
+      blocTest<HomeCubit, HomeState>(
         'saves printer and emits PrinterSaved',
         build: () {
           when(
@@ -214,7 +214,7 @@ void main() {
         address: 'AA:BB:CC:DD:EE:FF',
       );
 
-      blocTest<SettingsCubit, SettingsState>(
+      blocTest<HomeCubit, HomeState>(
         'emits [PrinterTestInProgress, PrinterTestSuccess] on success',
         build: () {
           when(
@@ -229,7 +229,7 @@ void main() {
         ],
       );
 
-      blocTest<SettingsCubit, SettingsState>(
+      blocTest<HomeCubit, HomeState>(
         'emits [PrinterTestInProgress, PrinterTestError] on failure',
         build: () {
           when(
@@ -251,8 +251,8 @@ void main() {
     // ─── Default Printer ─────────────────────────────────────────
 
     group('clearDefaultPrinter', () {
-      blocTest<SettingsCubit, SettingsState>(
-        'clears saved printer and emits SettingsInitial',
+      blocTest<HomeCubit, HomeState>(
+        'clears saved printer and emits HomeInitial',
         build: () {
           when(
             () => mockStorageService.clearDefaultPrinter(),
@@ -260,7 +260,7 @@ void main() {
           return buildCubit();
         },
         act: (cubit) => cubit.clearDefaultPrinter(),
-        expect: () => [const SettingsInitial()],
+        expect: () => [const HomeInitial()],
         verify: (_) {
           verify(() => mockStorageService.clearDefaultPrinter()).called(1);
         },
@@ -270,11 +270,11 @@ void main() {
     // ─── Reset ───────────────────────────────────────────────────
 
     group('reset', () {
-      blocTest<SettingsCubit, SettingsState>(
-        'emits [SettingsInitial] when reset is called',
+      blocTest<HomeCubit, HomeState>(
+        'emits [HomeInitial] when reset is called',
         build: buildCubit,
         act: (cubit) => cubit.reset(),
-        expect: () => [const SettingsInitial()],
+        expect: () => [const HomeInitial()],
       );
     });
   });

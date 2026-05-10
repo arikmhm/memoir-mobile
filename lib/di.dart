@@ -13,9 +13,9 @@ import 'features/session/data/datasources/transaction_datasource.dart';
 import 'features/session/data/repositories/transaction_repository.dart';
 import 'features/session/data/services/composite_print_service.dart';
 import 'features/session/data/services/composite_render_service.dart';
-import 'features/settings/bloc/settings_cubit.dart';
-import 'features/settings/data/services/camera_test_service.dart';
-import 'features/settings/data/services/printer_test_service.dart';
+import 'features/home/bloc/home_cubit.dart';
+import 'features/home/data/services/camera_test_service.dart';
+import 'features/home/data/services/printer_test_service.dart';
 import 'features/startup/bloc/startup_cubit.dart';
 import 'features/startup/data/datasources/startup_datasource.dart';
 import 'features/startup/data/repositories/startup_repository.dart';
@@ -141,13 +141,13 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // ─── Settings ─────────────────────────────────────────────────
+  // ─── Home ─────────────────────────────────────────────────
 
   sl.registerLazySingleton<CameraTestService>(() => CameraTestService());
   sl.registerLazySingleton<PrinterTestService>(() => PrinterTestService());
 
-  sl.registerFactory<SettingsCubit>(
-    () => SettingsCubit(
+  sl.registerFactory<HomeCubit>(
+    () => HomeCubit(
       cameraService: sl<CameraTestService>(),
       printerService: sl<PrinterTestService>(),
       storageService: sl<StorageService>(),

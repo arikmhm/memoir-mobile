@@ -21,9 +21,8 @@ import 'processing_state.dart';
 /// Flow:
 /// 1. Create transaction (API)
 /// 2. Await payment per method:
-///    - CASH: user clicks "SUDAH BAYAR" → confirmCash()
-///    - STATIC_QRIS: show static QR → user clicks "SUDAH BAYAR" → confirmCash()
-///    - PG: show dynamic QR → user clicks "CEK PEMBAYARAN" → checkPayment()
+///    - CASH / STATIC_QRIS: transaction already marked paid on creation → proceed directly
+///    - PG: show dynamic QR → auto-poll or user taps "CEK PEMBAYARAN" → checkPayment()
 /// 3. After PAID → render composite in background isolate
 /// 4. Print × printQty via Bluetooth/USB
 /// 5. Upload digital copy if hasDigitalCopy
@@ -73,9 +72,12 @@ class ProcessingCubit extends Cubit<ProcessingState> {
 
     try {
       // ── Step 1: Create transaction ──
+      final transactionType =
+          _storageService.isEventMode ? 'EVENT' : 'NORMAL';
       final result = await _repository.createTransaction(
         templateId: template.id,
         paymentMethod: paymentMethod,
+        transactionType: transactionType,
         printQty: printQty,
         hasDigitalCopy: hasDigitalCopy,
         totalAmount: totalAmount,
@@ -84,11 +86,16 @@ class ProcessingCubit extends Cubit<ProcessingState> {
       final transaction = result.transaction;
       // Transaction retained for retry scenarios.
 
-      // ── Step 2: Await payment ──
-      _emitAwaitingPayment(
-        transaction: transaction,
-        paymentMethod: paymentMethod,
-      );
+      // ── Step 2: Await payment or proceed directly ──
+      if (paymentMethod == 'CASH' || paymentMethod == 'STATIC_QRIS') {
+        // Transaction already paid on creation — skip payment screen.
+        await _renderAndPrint(transaction: transaction);
+      } else {
+        _emitAwaitingPayment(
+          transaction: transaction,
+          paymentMethod: paymentMethod,
+        );
+      }
     } on TransactionException catch (e) {
       emit(ProcessingError(message: e.message));
     } catch (e) {
@@ -169,25 +176,6 @@ class ProcessingCubit extends Cubit<ProcessingState> {
       }
     }
     // PENDING — do nothing, next tick will check again.
-  }
-
-  /// Called when user taps "SUDAH BAYAR" for CASH or STATIC_QRIS.
-  ///
-  /// Trust-based: cash is physically received, so we proceed immediately
-  /// and confirm to server in background. The endpoint is idempotent.
-  Future<void> confirmCashPayment() async {
-    final s = state;
-    if (s is! ProcessingAwaitingPayment) return;
-
-    final transaction = s.transaction;
-
-    // Fire-and-forget: confirm to server in background with retry.
-    // UI proceeds immediately — no need to wait for server response.
-    _retryInBackground(
-      () => _repository.confirmCash(transaction.id),
-    );
-
-    await _renderAndPrint(transaction: transaction);
   }
 
   /// Called when user taps "CEK PEMBAYARAN" for PG.

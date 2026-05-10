@@ -7,8 +7,7 @@ import '../../../../shared/data/models/transaction.dart';
 /// Transaction datasource — API calls for transaction lifecycle.
 ///
 /// Endpoints:
-/// - POST /kiosk/transactions — create transaction
-/// - POST /kiosk/transactions/:id/confirm-cash — confirm CASH/QRIS payment
+/// - POST /kiosk/transactions — create transaction (CASH/STATIC_QRIS auto-PAID on creation)
 /// - POST /kiosk/transactions/:id/check-payment — poll PG payment status
 class TransactionDatasource {
   final ApiClient _apiClient;
@@ -26,6 +25,7 @@ class TransactionDatasource {
   Future<CreateTransactionResult> createTransaction({
     required String templateId,
     required String paymentMethod,
+    required String transactionType,
     required int printQty,
     required bool hasDigitalCopy,
     required int totalAmount,
@@ -34,6 +34,7 @@ class TransactionDatasource {
       return _mockCreateTransaction(
         templateId: templateId,
         paymentMethod: paymentMethod,
+        transactionType: transactionType,
         printQty: printQty,
         hasDigitalCopy: hasDigitalCopy,
         totalAmount: totalAmount,
@@ -46,7 +47,7 @@ class TransactionDatasource {
         data: {
           'templateId': templateId,
           'paymentMethod': paymentMethod,
-          'transactionType': 'NORMAL',
+          'transactionType': transactionType,
           'printQty': printQty,
           'hasDigitalCopy': hasDigitalCopy,
           'totalAmount': totalAmount,
@@ -63,31 +64,6 @@ class TransactionDatasource {
         transaction: Transaction.fromJson(txJson),
         qrString: txJson['qrString'] as String?,
       );
-    } on DioException catch (e) {
-      throw _mapDioError(e);
-    }
-  }
-
-  /// Confirm CASH/STATIC_QRIS payment.
-  ///
-  /// Returns updated [Transaction] with status PAID.
-  /// Throws [TransactionException] on failure.
-  Future<Transaction> confirmCash(String transactionId) async {
-    if (useMock) return _mockConfirmCash(transactionId);
-
-    try {
-      final response = await _apiClient.post<Map<String, dynamic>>(
-        ApiConstants.confirmCashEndpoint(transactionId),
-        data: <String, dynamic>{},
-      );
-
-      final data = response.data?['data'] as Map<String, dynamic>?;
-      final txJson = data?['transaction'] as Map<String, dynamic>?;
-      if (txJson == null) {
-        throw const TransactionException('Respons tidak valid dari server');
-      }
-
-      return Transaction.fromJson(txJson);
     } on DioException catch (e) {
       throw _mapDioError(e);
     }
@@ -123,6 +99,7 @@ class TransactionDatasource {
   Future<CreateTransactionResult> _mockCreateTransaction({
     required String templateId,
     required String paymentMethod,
+    required String transactionType,
     required int printQty,
     required bool hasDigitalCopy,
     required int totalAmount,
@@ -131,7 +108,7 @@ class TransactionDatasource {
     final tx = Transaction(
       id: 'mock-tx-001',
       orderId: 'MEM-${DateTime.now().millisecondsSinceEpoch}-mock',
-      status: paymentMethod == 'PG' ? 'PENDING' : 'PENDING',
+      status: paymentMethod == 'PG' ? 'PENDING' : 'PAID',
       paymentMethod: paymentMethod,
       qrString: paymentMethod == 'PG'
           ? '00020101021226680016COM.XENDIT.WWW011893600916000000001802180000000000000001530336054071000005802ID5911MOCK KIOSK6007JAKARTA610512345626'
@@ -146,20 +123,6 @@ class TransactionDatasource {
     return CreateTransactionResult(
       transaction: tx,
       qrString: tx.qrString,
-    );
-  }
-
-  Future<Transaction> _mockConfirmCash(String transactionId) async {
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    return Transaction(
-      id: transactionId,
-      orderId: 'MEM-mock-order',
-      status: 'PAID',
-      paymentMethod: 'CASH',
-      printQty: 1,
-      hasDigitalCopy: false,
-      totalAmount: 25000,
-      paidAt: DateTime.now().toIso8601String(),
     );
   }
 

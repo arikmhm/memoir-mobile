@@ -109,6 +109,9 @@ void main() {
     registerFallbackValue(_mockPhotos);
     registerFallbackValue(FakePrintChannel());
     registerFallbackValue(PrinterConnectionType.bluetooth);
+
+    // Default: normal mode (not event mode).
+    when(() => mockStorageService.isEventMode).thenReturn(false);
   });
 
   ProcessingCubit buildCubit() => ProcessingCubit(
@@ -142,7 +145,8 @@ void main() {
     when(() => mockPrintService.disconnectPrinter()).thenAnswer((_) async {});
   }
 
-  void stubPrinterSettings() {
+  void stubPrinterSettings({bool isEventMode = false}) {
+    when(() => mockStorageService.isEventMode).thenReturn(isEventMode);
     when(() => mockStorageService.defaultPrinterMac)
         .thenReturn('AA:BB:CC:DD:EE:FF');
     when(() => mockStorageService.defaultPrinterName)
@@ -160,21 +164,24 @@ void main() {
 
     group('startProcessing — creates transaction then awaits payment', () {
       blocTest<ProcessingCubit, ProcessingState>(
-        'CASH: emits [CreatingTransaction, AwaitingPayment]',
+        'CASH: emits [CreatingTransaction, Rendering, Printing, Complete]',
         setUp: () {
           when(
             () => mockRepository.createTransaction(
               templateId: any(named: 'templateId'),
               paymentMethod: any(named: 'paymentMethod'),
+              transactionType: any(named: 'transactionType'),
               printQty: any(named: 'printQty'),
               hasDigitalCopy: any(named: 'hasDigitalCopy'),
               totalAmount: any(named: 'totalAmount'),
             ),
           ).thenAnswer(
             (_) async => const CreateTransactionResult(
-              transaction: _mockPendingTransaction,
+              transaction: _mockTransactionNoDigital,
             ),
           );
+          stubRenderAndPrint();
+          stubPrinterSettings();
         },
         build: buildCubit,
         act: (cubit) => cubit.startProcessing(
@@ -187,9 +194,9 @@ void main() {
         ),
         expect: () => [
           isA<ProcessingCreatingTransaction>(),
-          isA<ProcessingAwaitingPayment>()
-              .having((s) => s.paymentMethod, 'paymentMethod', 'CASH')
-              .having((s) => s.qrString, 'qrString', isNull),
+          isA<ProcessingRendering>(),
+          isA<ProcessingPrinting>(),
+          isA<ProcessingComplete>(),
         ],
       );
 
@@ -200,6 +207,7 @@ void main() {
             () => mockRepository.createTransaction(
               templateId: any(named: 'templateId'),
               paymentMethod: any(named: 'paymentMethod'),
+              transactionType: any(named: 'transactionType'),
               printQty: any(named: 'printQty'),
               hasDigitalCopy: any(named: 'hasDigitalCopy'),
               totalAmount: any(named: 'totalAmount'),
@@ -229,31 +237,24 @@ void main() {
       );
 
       blocTest<ProcessingCubit, ProcessingState>(
-        'STATIC_QRIS: emits [CreatingTransaction, AwaitingPayment] with imagePath',
+        'STATIC_QRIS: emits [CreatingTransaction, Rendering, Printing, Complete]',
         setUp: () {
           when(
             () => mockRepository.createTransaction(
               templateId: any(named: 'templateId'),
               paymentMethod: any(named: 'paymentMethod'),
+              transactionType: any(named: 'transactionType'),
               printQty: any(named: 'printQty'),
               hasDigitalCopy: any(named: 'hasDigitalCopy'),
               totalAmount: any(named: 'totalAmount'),
             ),
           ).thenAnswer(
             (_) async => const CreateTransactionResult(
-              transaction: Transaction(
-                id: 'tx-qris',
-                orderId: 'MEM-qris',
-                status: 'PENDING',
-                paymentMethod: 'STATIC_QRIS',
-                printQty: 1,
-                hasDigitalCopy: false,
-                totalAmount: 25000,
-              ),
+              transaction: _mockTransactionNoDigital,
             ),
           );
-          when(() => mockStorageService.staticQrisImagePath)
-              .thenReturn('/path/to/qris.png');
+          stubRenderAndPrint();
+          stubPrinterSettings();
         },
         build: buildCubit,
         act: (cubit) => cubit.startProcessing(
@@ -266,9 +267,9 @@ void main() {
         ),
         expect: () => [
           isA<ProcessingCreatingTransaction>(),
-          isA<ProcessingAwaitingPayment>()
-              .having((s) => s.paymentMethod, 'paymentMethod', 'STATIC_QRIS')
-              .having((s) => s.staticQrisImagePath, 'imagePath', '/path/to/qris.png'),
+          isA<ProcessingRendering>(),
+          isA<ProcessingPrinting>(),
+          isA<ProcessingComplete>(),
         ],
       );
 
@@ -279,6 +280,7 @@ void main() {
             () => mockRepository.createTransaction(
               templateId: any(named: 'templateId'),
               paymentMethod: any(named: 'paymentMethod'),
+              transactionType: any(named: 'transactionType'),
               printQty: any(named: 'printQty'),
               hasDigitalCopy: any(named: 'hasDigitalCopy'),
               totalAmount: any(named: 'totalAmount'),
@@ -303,23 +305,22 @@ void main() {
       );
     });
 
-    group('confirmCashPayment — CASH/STATIC_QRIS confirm', () {
-      test('proceeds to Rendering → Printing → Complete on success', () async {
+    group('CASH/STATIC_QRIS — auto-proceed without awaiting payment', () {
+      test('CASH: startProcessing proceeds directly to Complete', () async {
         when(
           () => mockRepository.createTransaction(
             templateId: any(named: 'templateId'),
             paymentMethod: any(named: 'paymentMethod'),
+            transactionType: any(named: 'transactionType'),
             printQty: any(named: 'printQty'),
             hasDigitalCopy: any(named: 'hasDigitalCopy'),
             totalAmount: any(named: 'totalAmount'),
           ),
         ).thenAnswer(
           (_) async => const CreateTransactionResult(
-            transaction: _mockPendingTransaction,
+            transaction: _mockTransactionNoDigital,
           ),
         );
-        when(() => mockRepository.confirmCash(any()))
-            .thenAnswer((_) async => _mockTransactionNoDigital);
         stubRenderAndPrint();
         stubPrinterSettings();
 
@@ -333,31 +334,26 @@ void main() {
           hasDigitalCopy: false,
           totalAmount: 25000,
         );
-        expect(cubit.state, isA<ProcessingAwaitingPayment>());
-
-        await cubit.confirmCashPayment();
         expect(cubit.state, isA<ProcessingComplete>());
 
-        // confirmCash is fire-and-forget in background — not called synchronously.
         cubit.close();
       });
 
-      test('proceeds even when confirmCash fails (trust-based)', () async {
+      test('STATIC_QRIS: startProcessing proceeds directly to Complete', () async {
         when(
           () => mockRepository.createTransaction(
             templateId: any(named: 'templateId'),
             paymentMethod: any(named: 'paymentMethod'),
+            transactionType: any(named: 'transactionType'),
             printQty: any(named: 'printQty'),
             hasDigitalCopy: any(named: 'hasDigitalCopy'),
             totalAmount: any(named: 'totalAmount'),
           ),
         ).thenAnswer(
           (_) async => const CreateTransactionResult(
-            transaction: _mockPendingTransaction,
+            transaction: _mockTransactionNoDigital,
           ),
         );
-        when(() => mockRepository.confirmCash(any()))
-            .thenThrow(const TransactionException('Server error', isRetryable: true));
         stubRenderAndPrint();
         stubPrinterSettings();
 
@@ -366,15 +362,11 @@ void main() {
         await cubit.startProcessing(
           template: _mockTemplate,
           capturedPhotos: _mockPhotos,
-          paymentMethod: 'CASH',
+          paymentMethod: 'STATIC_QRIS',
           printQty: 1,
           hasDigitalCopy: false,
           totalAmount: 25000,
         );
-        expect(cubit.state, isA<ProcessingAwaitingPayment>());
-
-        await cubit.confirmCashPayment();
-        // Should still complete despite confirmCash failure
         expect(cubit.state, isA<ProcessingComplete>());
 
         cubit.close();
@@ -387,6 +379,7 @@ void main() {
           () => mockRepository.createTransaction(
             templateId: any(named: 'templateId'),
             paymentMethod: any(named: 'paymentMethod'),
+            transactionType: any(named: 'transactionType'),
             printQty: any(named: 'printQty'),
             hasDigitalCopy: any(named: 'hasDigitalCopy'),
             totalAmount: any(named: 'totalAmount'),
@@ -477,6 +470,7 @@ void main() {
           () => mockRepository.createTransaction(
             templateId: any(named: 'templateId'),
             paymentMethod: any(named: 'paymentMethod'),
+            transactionType: any(named: 'transactionType'),
             printQty: any(named: 'printQty'),
             hasDigitalCopy: any(named: 'hasDigitalCopy'),
             totalAmount: any(named: 'totalAmount'),
@@ -486,8 +480,6 @@ void main() {
             transaction: _mockPendingTransaction,
           ),
         );
-        when(() => mockRepository.confirmCash(any()))
-            .thenAnswer((_) async => _mockPendingTransaction);
         when(() => mockStorageService.defaultPrinterMac).thenReturn(null);
         when(() => mockStorageService.defaultPrinterName).thenReturn(null);
         stubRenderAndPrint();
@@ -503,7 +495,6 @@ void main() {
           totalAmount: 25000,
         );
 
-        await cubit.confirmCashPayment();
         expect(cubit.state, isA<ProcessingPrintError>());
         expect(
           (cubit.state as ProcessingPrintError).message,
@@ -545,6 +536,7 @@ void main() {
           () => mockRepository.createTransaction(
             templateId: any(named: 'templateId'),
             paymentMethod: any(named: 'paymentMethod'),
+            transactionType: any(named: 'transactionType'),
             printQty: any(named: 'printQty'),
             hasDigitalCopy: any(named: 'hasDigitalCopy'),
             totalAmount: any(named: 'totalAmount'),
@@ -554,8 +546,6 @@ void main() {
             transaction: _mockPendingTransaction,
           ),
         );
-        when(() => mockRepository.confirmCash(any()))
-            .thenAnswer((_) async => _mockPendingTransaction);
         stubRenderAndPrint();
         stubPrinterSettings();
 

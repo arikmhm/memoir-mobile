@@ -8,19 +8,11 @@ import '../../data/datasources/storage_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 
-/// Reusable session countdown bar.
+/// Per-page session countdown bar.
 ///
-/// Reads timeout settings from [StorageService] and displays a subtle
-/// countdown. When expired, auto-navigates to screensaver.
-///
-/// Supports two modes:
-/// - **Global**: shared timer across all pages (reads remaining from service)
-/// - **Per page**: independent timer per screen
-///
-/// If timeout is 0 or mode doesn't apply, renders [SizedBox.shrink].
+/// Counts down from [perPageTimeout] seconds. When expired, navigates
+/// to screensaver. Hidden if [perPageTimeout] is 0.
 class SessionCountdownBar extends StatefulWidget {
-  /// The per-page timeout key. Used when mode is 'per_page'.
-  /// Pass the timeout seconds directly (e.g. storageService.selectTemplateTimeout).
   final int perPageTimeout;
 
   const SessionCountdownBar({
@@ -35,58 +27,29 @@ class SessionCountdownBar extends StatefulWidget {
 class _SessionCountdownBarState extends State<SessionCountdownBar> {
   Timer? _timer;
   late int _remaining;
-  bool _visible = false;
-
-  StorageService get _storage => sl<StorageService>();
 
   @override
   void initState() {
     super.initState();
-    _initTimer();
-  }
+    _remaining = widget.perPageTimeout;
 
-  void _initTimer() {
-    // Off mode — no countdown at all.
-    if (_storage.isTimeoutOff) return;
+    if (_remaining <= 0) return;
 
-    if (_storage.isGlobalTimeout) {
-      _remaining = _storage.globalRemainingSeconds;
-    } else {
-      _remaining = widget.perPageTimeout;
-    }
-
-    if (_remaining <= 0) {
-      // Already expired — navigate immediately.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _onExpired();
-      });
-      return;
-    }
-
-    _visible = true;
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) {
         _timer?.cancel();
         return;
       }
-
-      if (_storage.isGlobalTimeout) {
-        _remaining = _storage.globalRemainingSeconds;
-      } else {
-        _remaining--;
-      }
-
+      setState(() => _remaining--);
       if (_remaining <= 0) {
         _timer?.cancel();
         _onExpired();
-      } else {
-        setState(() {});
       }
     });
   }
 
   void _onExpired() {
-    _storage.clearSessionTimer();
+    sl<StorageService>().clearSessionTimer();
     if (mounted) context.go('/screensaver');
   }
 
@@ -98,7 +61,7 @@ class _SessionCountdownBarState extends State<SessionCountdownBar> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_visible) return const SizedBox.shrink();
+    if (widget.perPageTimeout <= 0) return const SizedBox.shrink();
 
     final minutes = _remaining ~/ 60;
     final seconds = _remaining % 60;
@@ -111,23 +74,23 @@ class _SessionCountdownBarState extends State<SessionCountdownBar> {
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.screenHorizontal,
-        vertical: AppSpacing.xs,
+        vertical: AppSpacing.sm,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             Icons.timer_outlined,
-            size: 13,
-            color: isLow ? AppColors.error : AppColors.textDisabled,
+            size: 18,
+            color: isLow ? AppColors.error : AppColors.textSecondary,
           ),
           const SizedBox(width: AppSpacing.xs),
           Text(
             timeStr,
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: isLow ? AppColors.error : AppColors.textDisabled,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: isLow ? AppColors.error : AppColors.textSecondary,
             ),
           ),
         ],

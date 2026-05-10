@@ -2,21 +2,18 @@ import 'dart:typed_data';
 
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
 import '../../../../shared/data/services/print_channel.dart';
+import '../../../session/data/services/native_bluetooth_channel.dart';
 import '../../../session/data/services/native_usb_channel.dart';
-import '../../bloc/settings_state.dart';
+import '../../bloc/home_state.dart';
 
-/// Service wrapper for Bluetooth Classic thermal printer.
+/// Service wrapper for thermal printer testing and device scanning.
 ///
-/// Uses `print_bluetooth_thermal` which supports SPP (Serial Port Profile)
-/// — the protocol used by most thermal printers like EPPOS EP600.
-///
-/// Key difference from BLE:
-/// - Uses Android's paired device list (no scan needed)
-/// - Printer must be paired first via Android Bluetooth Settings
-/// - Connection via MAC address over RFCOMM
+/// Uses [NativeBluetoothChannel] (custom memoir/bluetooth_print MethodChannel)
+/// for all Bluetooth operations — never [print_bluetooth_thermal], which has a
+/// fatal race condition: its coroutine callback can be submitted twice, causing
+/// `Reply already submitted` → app crash.
 class PrinterTestService {
   /// Request Bluetooth runtime permissions (Android 12+).
   Future<void> _ensureBluetoothPermissions() async {
@@ -42,20 +39,20 @@ class PrinterTestService {
   Future<List<PrinterInfo>> scanBluetoothPrinters() async {
     await _ensureBluetoothPermissions();
 
-    final isOn = await PrintBluetoothThermal.bluetoothEnabled;
+    final isOn = await NativeBluetoothChannel.isEnabled();
     if (!isOn) {
       throw Exception(
         'Bluetooth tidak aktif. Nyalakan Bluetooth terlebih dahulu.',
       );
     }
 
-    final paired = await PrintBluetoothThermal.pairedBluetooths;
+    final paired = await NativeBluetoothChannel.pairedDevices();
 
     return paired
         .map(
-          (bt) => PrinterInfo(
-            name: bt.name,
-            address: bt.macAdress,
+          (d) => PrinterInfo(
+            name: d['name'] as String? ?? 'Unknown',
+            address: d['mac'] as String,
             connectionType: PrinterConnectionType.bluetooth,
           ),
         )
@@ -63,18 +60,50 @@ class PrinterTestService {
   }
 
   /// Get list of USB printers connected via OTG cable.
+  ///
+  /// When no printers are found, falls back to [NativeUsbChannel.listAllDevices]
+  /// to produce a diagnostic error message — distinguishing "OTG not working"
+  /// (empty device list) from "device found but not recognized as printer"
+  /// (non-empty device list with wrong USB class).
   Future<List<PrinterInfo>> scanUsbPrinters() async {
     final devices = await NativeUsbChannel.listDevices();
 
-    return devices
-        .map(
-          (d) => PrinterInfo(
-            name: d['deviceName'] as String? ?? 'USB Printer',
-            address: '${d['deviceId']}',
-            connectionType: PrinterConnectionType.usb,
-          ),
-        )
-        .toList();
+    if (devices.isNotEmpty) {
+      return devices
+          .map(
+            (d) => PrinterInfo(
+              name: d['deviceName'] as String? ?? 'USB Printer',
+              address: '${d['deviceId']}',
+              connectionType: PrinterConnectionType.usb,
+            ),
+          )
+          .toList();
+    }
+
+    // Diagnose why no printer was found.
+    final allDevices = await NativeUsbChannel.listAllDevices();
+    if (allDevices.isEmpty) {
+      throw Exception(
+        'Tidak ada perangkat USB yang terdeteksi oleh Android.\n\n'
+        'Kemungkinan penyebab:\n'
+        '• Tablet tidak mengaktifkan USB host mode — coba adapter OTG lain '
+        '(pastikan adapter mendukung mode host/DFP, bukan hanya charging)\n'
+        '• Pada Samsung tablet tertentu, OTG hanya aktif dengan adapter resmi\n'
+        '• Coba cabut dan pasang ulang adapter OTG',
+      );
+    }
+
+    // OS sees the device but isPrinterDevice filtered it out.
+    final names = allDevices
+        .map((d) =>
+            '${d['deviceName']} (class=${d['deviceClass']}, '
+            'interfaces=${d['interfaceClasses']})')
+        .join('\n');
+    throw Exception(
+      '${allDevices.length} perangkat USB terdeteksi, namun tidak ada yang '
+      'dikenali sebagai printer:\n$names\n\n'
+      'Hubungi developer dengan info di atas.',
+    );
   }
 
   /// Perform a test print on the given printer.
@@ -164,19 +193,16 @@ class PrinterTestService {
     return bytes;
   }
 
-  /// Test print via Bluetooth SPP.
+  /// Test print via Bluetooth SPP using [NativeBluetoothChannel].
   Future<void> _testPrintBluetooth(
     PrinterInfo printerInfo,
     List<int> bytes,
   ) async {
     await _ensureBluetoothPermissions();
 
-    await PrintBluetoothThermal.disconnect;
+    final channel = NativeBluetoothChannel();
 
-    final connected = await PrintBluetoothThermal.connect(
-      macPrinterAddress: printerInfo.address,
-    );
-
+    final connected = await channel.connect(printerInfo.address);
     if (!connected) {
       throw Exception(
         'Gagal terhubung ke printer "${printerInfo.name}". '
@@ -185,9 +211,12 @@ class PrinterTestService {
     }
 
     try {
-      await PrintBluetoothThermal.writeBytes(bytes);
+      final success = await channel.write(Uint8List.fromList(bytes));
+      if (!success) {
+        throw Exception('Gagal mengirim data ke printer Bluetooth.');
+      }
     } finally {
-      await PrintBluetoothThermal.disconnect;
+      await channel.disconnect();
     }
   }
 
@@ -216,8 +245,5 @@ class PrinterTestService {
     }
   }
 
-  /// Dispose resources.
-  Future<void> dispose() async {
-    await PrintBluetoothThermal.disconnect;
-  }
+  Future<void> dispose() async {}
 }

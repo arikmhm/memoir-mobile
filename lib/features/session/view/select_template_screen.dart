@@ -3,10 +3,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-
 import '../../../di.dart';
 import '../../../shared/core/theme/app_colors.dart';
-import '../../../shared/core/widgets/noise_background.dart';
+import '../../../shared/core/widgets/page_background.dart';
 import '../../../shared/core/widgets/session_countdown_bar.dart';
 import '../../../shared/core/theme/app_spacing.dart';
 import '../../../shared/data/datasources/storage_service.dart';
@@ -29,11 +28,9 @@ class SelectTemplateScreen extends StatefulWidget {
 
 class _SelectTemplateScreenState extends State<SelectTemplateScreen> {
   int _selectedIndex = 0;
-
   @override
   void initState() {
     super.initState();
-    // Start global session timer when entering template selection.
     sl<StorageService>().startSessionTimer();
   }
 
@@ -62,11 +59,7 @@ class _SelectTemplateScreenState extends State<SelectTemplateScreen> {
       backgroundColor: AppColors.surface,
       body: Stack(
         children: [
-          const Positioned.fill(
-            child: RepaintBoundary(
-              child: NoiseBackground(),
-            ),
-          ),
+          const Positioned.fill(child: PageBackground(pageKey: 'selectTemplate')),
           SafeArea(
         child: Column(
           children: [

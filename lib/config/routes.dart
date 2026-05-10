@@ -15,8 +15,8 @@ import '../features/session/view/confirmation_screen.dart';
 import '../features/session/view/processing_screen.dart';
 import '../features/session/view/select_template_screen.dart';
 import '../features/session/view/thank_you_screen.dart';
-import '../features/settings/bloc/settings_cubit.dart';
-import '../features/settings/view/settings_screen.dart';
+import '../features/home/bloc/home_cubit.dart';
+import '../features/home/view/home_screen.dart';
 import '../features/startup/bloc/startup_cubit.dart';
 import '../features/startup/view/startup_screen.dart';
 
@@ -58,10 +58,10 @@ class AppRouter {
         return null;
       }
 
-      // If ready, redirect away from pairing/startup to screensaver
+      // If ready, redirect away from pairing/startup to home
       if (appState is AppReady) {
         if (location == '/pairing' || location == '/startup') {
-          return '/screensaver';
+          return '/home';
         }
       }
 
@@ -148,10 +148,10 @@ class AppRouter {
         },
       ),
       GoRoute(
-        path: '/settings',
-        builder: (context, state) => BlocProvider<SettingsCubit>(
-          create: (_) => sl<SettingsCubit>(),
-          child: const SettingsScreen(),
+        path: '/home',
+        builder: (context, state) => BlocProvider<HomeCubit>(
+          create: (_) => sl<HomeCubit>(),
+          child: const HomeScreen(),
         ),
       ),
       GoRoute(

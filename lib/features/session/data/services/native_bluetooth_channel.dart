@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/services.dart';
 
 import '../../../../shared/data/services/print_channel.dart';
@@ -35,5 +33,24 @@ class NativeBluetoothChannel implements PrintChannel {
   @override
   Future<void> disconnect() async {
     await _channel.invokeMethod<bool>('disconnect');
+  }
+
+  /// Return all Bluetooth devices currently paired in Android settings.
+  ///
+  /// Returns maps with keys: `name`, `mac`.
+  static Future<List<Map<String, dynamic>>> pairedDevices() async {
+    final result =
+        await _channel.invokeMethod<List<dynamic>>('pairedDevices');
+    if (result == null) return [];
+    return result
+        .cast<Map<dynamic, dynamic>>()
+        .map((m) => m.cast<String, dynamic>())
+        .toList();
+  }
+
+  /// Return true if the device Bluetooth adapter is currently enabled.
+  static Future<bool> isEnabled() async {
+    final result = await _channel.invokeMethod<bool>('isEnabled');
+    return result ?? false;
   }
 }

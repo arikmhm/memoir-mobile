@@ -7,7 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../../di.dart';
 import '../../../shared/core/theme/app_colors.dart';
 import '../../../shared/core/theme/app_spacing.dart';
-import '../../../shared/core/widgets/noise_background.dart';
+import '../../../shared/core/widgets/page_background.dart';
 import '../../../shared/data/datasources/storage_service.dart';
 import '../../../shared/data/models/kiosk_config.dart';
 
@@ -80,11 +80,7 @@ class _ThankYouScreenState extends State<ThankYouScreen> {
       backgroundColor: AppColors.surface,
       body: Stack(
         children: [
-          const Positioned.fill(
-            child: RepaintBoundary(
-              child: NoiseBackground(),
-            ),
-          ),
+          const Positioned.fill(child: PageBackground(pageKey: 'thankYou')),
           SafeArea(
             child: Column(
               children: [
