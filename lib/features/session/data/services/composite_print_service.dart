@@ -4,6 +4,7 @@ import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:image/image.dart' as img;
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../../../shared/core/utils/formatters.dart';
 import '../../../../shared/data/services/print_channel.dart';
 
 /// Service for printing composite images via thermal printer.
@@ -146,6 +147,144 @@ class CompositePrintService {
       bands: [escPosBytes],
     );
   }
+
+  /// Build ESC/POS bytes for a session receipt.
+  ///
+  /// Includes booth name, date/time, print qty, optional digital copy flag,
+  /// payment method, total, transaction ID, and optional QR for soft file.
+  Future<Uint8List> buildReceiptBytes({
+    required String boothName,
+    required String transactionId,
+    required String? paidAt,
+    required int printQty,
+    required bool hasDigitalCopy,
+    required String paymentMethod,
+    required int totalAmount,
+    String? previewUrl,
+  }) async {
+    final profile = await CapabilityProfile.load();
+    final generator = Generator(PaperSize.mm80, profile);
+    final bytes = <int>[];
+
+    bytes.addAll(generator.reset());
+
+    // ── Header ──
+    bytes.addAll(generator.text(
+      boothName,
+      styles: const PosStyles(
+        align: PosAlign.center,
+        bold: true,
+        height: PosTextSize.size2,
+        width: PosTextSize.size2,
+      ),
+    ));
+
+    if (paidAt != null) {
+      try {
+        final dt = DateTime.parse(paidAt).toLocal();
+        final d = '${dt.day.toString().padLeft(2, '0')}/'
+            '${dt.month.toString().padLeft(2, '0')}/'
+            '${dt.year}';
+        final t = '${dt.hour.toString().padLeft(2, '0')}:'
+            '${dt.minute.toString().padLeft(2, '0')}';
+        bytes.addAll(generator.text(
+          '$d  $t',
+          styles: const PosStyles(align: PosAlign.center),
+        ));
+      } catch (_) {
+        bytes.addAll(generator.text(
+          paidAt,
+          styles: const PosStyles(align: PosAlign.center),
+        ));
+      }
+    }
+
+    bytes.addAll(generator.hr());
+
+    // ── Details ──
+    bytes.addAll(generator.row([
+      PosColumn(text: 'Jumlah Cetak', width: 7),
+      PosColumn(
+        text: '$printQty lembar',
+        width: 5,
+        styles: const PosStyles(align: PosAlign.right),
+      ),
+    ]));
+
+    if (hasDigitalCopy) {
+      bytes.addAll(generator.row([
+        PosColumn(text: 'Softcopy Digital', width: 7),
+        PosColumn(
+          text: 'Ya',
+          width: 5,
+          styles: const PosStyles(align: PosAlign.right),
+        ),
+      ]));
+    }
+
+    bytes.addAll(generator.row([
+      PosColumn(text: 'Metode Bayar', width: 7),
+      PosColumn(
+        text: _labelPaymentMethod(paymentMethod),
+        width: 5,
+        styles: const PosStyles(align: PosAlign.right),
+      ),
+    ]));
+
+    bytes.addAll(generator.hr());
+
+    // ── Total ──
+    bytes.addAll(generator.row([
+      PosColumn(
+        text: 'TOTAL',
+        width: 6,
+        styles: const PosStyles(bold: true),
+      ),
+      PosColumn(
+        text: Formatters.formatRupiah(totalAmount),
+        width: 6,
+        styles: const PosStyles(align: PosAlign.right, bold: true),
+      ),
+    ]));
+
+    bytes.addAll(generator.hr());
+
+    // ── Transaction ID ──
+    bytes.addAll(generator.text(
+      'ID: $transactionId',
+      styles: const PosStyles(
+        align: PosAlign.center,
+        fontType: PosFontType.fontB,
+      ),
+      linesAfter: 1,
+    ));
+
+    // ── QR soft file (opsional) ──
+    if (hasDigitalCopy && previewUrl != null) {
+      bytes.addAll(generator.text(
+        'Scan untuk akses softcopy:',
+        styles: const PosStyles(align: PosAlign.center),
+      ));
+      bytes.addAll(generator.qrcode(
+        previewUrl,
+        align: PosAlign.center,
+        size: QRSize.size5,
+        cor: QRCorrection.M,
+      ));
+    }
+
+    bytes.addAll(generator.feed(3));
+    bytes.addAll(generator.cut());
+
+    return Uint8List.fromList(bytes);
+  }
+
+  static String _labelPaymentMethod(String method) => switch (method) {
+    'CASH' => 'Tunai',
+    'STATIC_QRIS' => 'QRIS',
+    'PG' => 'QRIS',
+    _ => method,
+  };
 
   Future<void> _ensureBluetoothPermissions() async {
     final statuses = await [

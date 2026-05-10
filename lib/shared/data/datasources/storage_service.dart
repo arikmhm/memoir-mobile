@@ -213,6 +213,16 @@ class StorageService {
     await _prefs.remove(_printerConnectionTypeKey);
   }
 
+  // ─── Processing Settings ─────────────────────────────────────
+
+  static const _receiptPrintEnabledKey = 'processing.receiptPrintEnabled';
+
+  bool get isReceiptPrintEnabled =>
+      _prefs.getBool(_receiptPrintEnabledKey) ?? true;
+
+  Future<void> setReceiptPrintEnabled(bool enabled) =>
+      _prefs.setBool(_receiptPrintEnabledKey, enabled);
+
   // ─── Confirmation Settings ──────────────────────────────────
 
   // Default total print count

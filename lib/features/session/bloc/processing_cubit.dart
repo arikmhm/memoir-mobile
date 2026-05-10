@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../shared/data/datasources/storage_service.dart';
+import '../../../shared/data/models/kiosk_config.dart';
 import '../../../shared/data/models/template.dart';
 import '../../../shared/data/models/transaction.dart';
 import '../../../shared/data/services/print_channel.dart';
@@ -426,6 +427,11 @@ class ProcessingCubit extends Cubit<ProcessingState> {
           return; // Wait for retryPrint() or skipPrint()
         }
       }
+
+      // Print receipt after all copies — non-fatal if fails.
+      try {
+        await _printReceipt(transaction: transaction);
+      } catch (_) {}
     } finally {
       try {
         await _printService.disconnectPrinter();
@@ -510,6 +516,43 @@ class ProcessingCubit extends Cubit<ProcessingState> {
     if (s is! ProcessingPrintError) return;
     // Upload continues in background — don't block.
     emit(ProcessingComplete(transaction: s.transaction));
+  }
+
+  /// Print a simple text receipt after all photo copies.
+  ///
+  /// Skipped silently if receipt printing is disabled in settings,
+  /// or if kiosk config is unavailable. Printer must already be connected.
+  Future<void> _printReceipt({required Transaction transaction}) async {
+    if (!_storageService.isReceiptPrintEnabled) return;
+
+    final configJson = _storageService.kioskConfigJson;
+    if (configJson == null) return;
+
+    final config = KioskConfig.fromJsonString(configJson);
+
+    String? previewUrl;
+    if (transaction.hasDigitalCopy) {
+      final base = config.sessionPreviewUrl;
+      if (base != null && base.isNotEmpty) {
+        final trimmed = base.endsWith('/')
+            ? base.substring(0, base.length - 1)
+            : base;
+        previewUrl = '$trimmed/${transaction.id}';
+      }
+    }
+
+    final receiptBytes = await _printService.buildReceiptBytes(
+      boothName: config.name,
+      transactionId: transaction.id,
+      paidAt: transaction.paidAt,
+      printQty: transaction.printQty,
+      hasDigitalCopy: transaction.hasDigitalCopy,
+      paymentMethod: transaction.paymentMethod,
+      totalAmount: transaction.totalAmount,
+      previewUrl: previewUrl,
+    );
+
+    await _printService.sendData(bands: [receiptBytes]);
   }
 
   /// After printing, complete immediately.
