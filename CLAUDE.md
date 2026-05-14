@@ -5,13 +5,25 @@ Flutter kiosk app untuk Android tablet — menjalankan sesi photo booth, pembaya
 ## Quick Commands
 
 ```bash
-flutter run                                          # run (debug)
-flutter run --dart-define=API_BASE_URL=https://...   # run dengan custom API
+flutter run                                          # run (dev environment, default)
+flutter run --dart-define=APP_ENV=prod \
+  --dart-define=API_BASE_URL=https://backend-memoir-production.up.railway.app/api/v1  # run (prod)
 flutter run --dart-define=USE_MOCK=true              # run dengan mock mode
 flutter test                                         # run all tests
 flutter test test/bloc/                              # run bloc tests only
 flutter analyze                                      # static analysis
 ```
+
+### Environment Management
+
+Aplikasi mendukung **dev** dan **prod** environments via `AppConfig` (lib/config/app_config.dart).
+
+**Development (default):**
+- Automatic `flutter run` → hits dev backend (backend-memoir-development.up.railway.app)
+
+**Production:**
+- Copy-paste command di atas atau simpan alias
+- `flutter run --dart-define=APP_ENV=prod --dart-define=API_BASE_URL=https://backend-memoir-production.up.railway.app/api/v1`
 
 ## Tech Stack
 
@@ -31,7 +43,9 @@ Feature-first clean architecture:
 lib/
   di.dart                    # GetIt registration
   app.dart                   # Root widget (MultiBlocProvider)
-  config/routes.dart         # GoRouter definitions
+  config/
+    app_config.dart          # Environment config (dev/prod)
+    routes.dart              # GoRouter definitions
   features/
     app/bloc/                # AppCubit — app lifecycle (pairing/startup/ready/locked)
     pairing/                 # 6-digit pairing code → device token

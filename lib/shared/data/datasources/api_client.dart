@@ -24,7 +24,7 @@ class ApiClient {
        _onAuthError = onAuthError {
     _dio = Dio(
       BaseOptions(
-        baseUrl: baseUrl ?? ApiConstants.baseUrl,
+        baseUrl: baseUrl ?? 'https://backend-memoir-development.up.railway.app/api/v1',
         connectTimeout: ApiConstants.connectTimeout,
         receiveTimeout: ApiConstants.receiveTimeout,
         headers: {

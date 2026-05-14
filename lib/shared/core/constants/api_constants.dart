@@ -1,20 +1,9 @@
 /// API configuration constants.
 ///
 /// Endpoint paths match PRD-05 Section 7 (identical to PRD-04).
-/// Base URL configurable via --dart-define=API_BASE_URL=...
+/// Base URL is now set dynamically via AppConfig (see lib/config/app_config.dart).
 class ApiConstants {
   ApiConstants._();
-
-  // Base URL — override via: flutter run --dart-define=API_BASE_URL=https://...
-  // Local API di port 3000, host 0.0.0.0
-  static const String baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    // development backend di local
-    // defaultValue: 'http://192.168.3.104:3000/api/v1',
-    // development backend di railway
-    defaultValue: 'https://backend-memoir-development.up.railway.app/api/v1',
-    
-  );
 
   // Mock mode — override via: flutter run --dart-define=USE_MOCK=true
   static const bool useMock = bool.fromEnvironment('USE_MOCK');

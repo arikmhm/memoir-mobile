@@ -2,6 +2,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'config/app_config.dart';
 import 'features/app/bloc/app_cubit.dart';
 import 'features/pairing/data/datasources/pairing_datasource.dart';
 import 'features/pairing/data/repositories/pairing_repository.dart';
@@ -31,6 +32,11 @@ final sl = GetIt.instance;
 ///
 /// Call this once in main() before runApp().
 Future<void> initDependencies() async {
+  // ─── Config ──────────────────────────────────────────────────
+
+  final appConfig = AppConfig.fromEnvironment();
+  sl.registerSingleton<AppConfig>(appConfig);
+
   // ─── External ────────────────────────────────────────────────
 
   final prefs = await SharedPreferences.getInstance();
@@ -49,6 +55,7 @@ Future<void> initDependencies() async {
 
   sl.registerSingleton<ApiClient>(
     ApiClient(
+      baseUrl: sl<AppConfig>().apiBaseUrl,
       getToken: () => sl<StorageService>().getDeviceToken(),
       onAuthError: () async {
         sl<AppCubit>().onAuthError();
@@ -150,6 +157,7 @@ Future<void> initDependencies() async {
     () => HomeCubit(
       cameraService: sl<CameraTestService>(),
       printerService: sl<PrinterTestService>(),
+      renderService: sl<CompositeRenderService>(),
       storageService: sl<StorageService>(),
       startupRepository: sl<StartupRepository>(),
       appCubit: sl<AppCubit>(),
