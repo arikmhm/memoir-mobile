@@ -672,42 +672,21 @@ class CompositeRenderService {
   /// printer's ~100 ms mechanical cycle time per 64 lines.
   static const int _bandHeight = 64;
 
-  /// Encode ESC/POS raster bytes from a color canvas, converting color→B&W
-  /// with Floyd-Steinberg dithering during encoding.
+  /// Encode ESC/POS raster bytes from a color canvas, applying the full
+  /// image-processing pipeline from [ProcessingSettings] before encoding.
   ///
-  /// **Why dither during encoding?** The color canvas (for upload) is
-  /// rendered once. During print encoding, we convert each color pixel
-  /// to luminance, apply dithering error diffusion, then output the
-  /// dithered bit. This avoids rendering the canvas twice (once color,
-  /// once dithered).
+  /// **Pipeline** (mirrors [_drawPhotoDithered] so preview = print output):
+  /// 1. BT.709 grayscale + histogram (full image, one pass)
+  /// 2. Auto-levels (0.5% clip) + gamma(0.72) + brightness + contrast(1.35)
+  /// 3. Sharpen 3×3 unsharp mask ([ProcessingSettings.sharpenAmount])
+  /// 4. Band-by-band dithering using selected algorithm (FS or Atkinson)
+  /// 5. Pack bits → GS v 0 raster bands
   ///
-  /// Luminance is computed via BT.709 (same as grayscale conversion):
-  /// `lum = 0.2126*R + 0.7152*G + 0.0722*B`
-  ///
-  /// Floyd-Steinberg dithering is applied per-band with error buffers
-  /// allocated per band (per-band error reset trades slight banding at
-  /// band boundaries for constant memory usage O(width) vs O(width×height)).
-  ///
-  /// **Why bands?** Over Bluetooth SPP (~100-200 KB/s), a single 57 KB
-  /// raster command causes buffer underrun: the printer starts printing
-  /// before all data arrives, runs out of buffered data mid-print, pauses
-  /// until more data arrives → the thermal head cools → visible
-  /// horizontal line when printing resumes.
-  ///
-  /// Band-based encoding splits the image into 128-line chunks, each as
-  /// a separate `GS v 0` command (~9 KB). Each band is small enough to
-  /// be fully buffered before the printer starts printing it. Between
-  /// bands, `GS v 0` positions the print head immediately below the
-  /// image — no gap, no extra line feed.
-  ///
-  /// Over USB this is unnecessary (57 KB arrives in <1 ms), but the
-  /// overhead is negligible (~56 extra header bytes for 7 bands).
-  ///
-  /// - Band 0 starts with `ESC @` (reset).
-  /// - The last band ends with `ESC d` (feed) + `GS V` (cut).
-  ///
-  /// The caller sends each band as an independent Bluetooth write so the
-  /// native pacing layer can drain the ~4.6 KB payload before the next.
+  /// All four [ProcessingSettings] fields are applied:
+  /// - [ProcessingSettings.thermalDensity] → ESC/POS init bytes (band 0)
+  /// - [ProcessingSettings.brightness] → luminance offset (step 2)
+  /// - [ProcessingSettings.sharpenAmount] → unsharp mask (step 3)
+  /// - [ProcessingSettings.dither] → FS or Atkinson (step 4)
   static List<Uint8List> _encodeEscPosRasterBands(
     img.Image colorCanvas,
     ProcessingSettings settings, {
@@ -717,11 +696,74 @@ class CompositeRenderService {
     final h = colorCanvas.height;
     final bytesPerRow = (w + 7) ~/ 8;
     final numBands = (h + _bandHeight - 1) ~/ _bandHeight;
-
-    // Pixel buffer — toUint8List() gives zero-copy RGBA access.
     final pixels = colorCanvas.toUint8List();
-    final rowStride = w * 4; // 4 bytes per pixel (RGBA)
+    final rowStride = w * 4;
+    final totalPixels = w * h;
 
+    // ── Step 1: BT.709 Grayscale + histogram (full image) ──
+    final lum = Float64List(totalPixels);
+    final hist = List<int>.filled(256, 0);
+    for (var y = 0; y < h; y++) {
+      final rowStart = y * rowStride;
+      final lumRowStart = y * w;
+      for (var px = 0; px < w; px++) {
+        final pxIdx = rowStart + px * 4;
+        final v = 0.2126 * pixels[pxIdx]
+            + 0.7152 * pixels[pxIdx + 1]
+            + 0.0722 * pixels[pxIdx + 2];
+        lum[lumRowStart + px] = v;
+        hist[v.round().clamp(0, 255)]++;
+      }
+    }
+
+    // ── Step 2: Auto-levels + Gamma 0.72 + Brightness + Contrast 1.35 ──
+    final clipCount = (totalPixels * 0.005).round();
+    var cumLow = 0;
+    var loVal = 0;
+    for (var i = 0; i < 256; i++) {
+      cumLow += hist[i];
+      if (cumLow >= clipCount) { loVal = i; break; }
+    }
+    var cumHigh = 0;
+    var hiVal = 255;
+    for (var i = 255; i >= 0; i--) {
+      cumHigh += hist[i];
+      if (cumHigh >= clipCount) { hiVal = i; break; }
+    }
+    final lo = loVal.toDouble();
+    final levelScale = hiVal > loVal ? 255.0 / (hiVal - loVal) : 1.0;
+    for (var i = 0; i < totalPixels; i++) {
+      var v = (lum[i] - lo) * levelScale;
+      if (v < 0.0) v = 0.0;
+      if (v > 255.0) v = 255.0;
+      v = 255.0 * math.pow(v / 255.0, 0.72);
+      v += settings.brightness;
+      v = (v - 128.0) * 1.35 + 128.0;
+      if (v < 0.0) v = 0.0;
+      if (v > 255.0) v = 255.0;
+      lum[i] = v;
+    }
+
+    // ── Step 3: Sharpen 3×3 unsharp mask ──
+    final sharpenAmt = settings.sharpenAmount;
+    final sharp = Float64List(totalPixels);
+    for (var py = 0; py < h; py++) {
+      final rowOff = py * w;
+      for (var px = 0; px < w; px++) {
+        final c = lum[rowOff + px];
+        final t = lum[(py > 0 ? py - 1 : 0) * w + px];
+        final b = lum[(py < h - 1 ? py + 1 : py) * w + px];
+        final l = lum[rowOff + (px > 0 ? px - 1 : 0)];
+        final r = lum[rowOff + (px < w - 1 ? px + 1 : px)];
+        final conv = 5.0 * c - t - b - l - r;
+        var v = (1.0 - sharpenAmt) * c + sharpenAmt * conv;
+        if (v < 0.0) v = 0.0;
+        if (v > 255.0) v = 255.0;
+        sharp[rowOff + px] = v;
+      }
+    }
+
+    // ── Band encoding ──
     final bands = <Uint8List>[];
 
     // Band 0: ESC @ reset + density-setting commands — sent as a separate
@@ -754,48 +796,25 @@ class CompositeRenderService {
       buf[pos++] = bandH & 0xFF;
       buf[pos++] = (bandH >> 8) & 0xFF;
 
-      // Build luminance buffer for this band.
-      final lum = Float64List(w * bandH);
+      // ── Step 4: Dither this band using selected algorithm ──
+      // Copy band from preprocessed buffer, then dither in-place.
+      final bandLum = Float64List(w * bandH);
       for (var by = 0; by < bandH; by++) {
-        final y = startY + by;
-        final rowStart = y * rowStride;
-        final lumRowStart = by * w;
+        final src = (startY + by) * w;
+        final dst = by * w;
         for (var px = 0; px < w; px++) {
-          final pxIdx = rowStart + px * 4;
-          final r = pixels[pxIdx].toDouble();
-          final g = pixels[pxIdx + 1].toDouble();
-          final b = pixels[pxIdx + 2].toDouble();
-          lum[lumRowStart + px] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          bandLum[dst + px] = sharp[src + px];
         }
       }
 
-      // Apply Floyd-Steinberg dithering to luminance buffer.
-      const double fs7 = 7.0 / 16.0;
-      const double fs3 = 3.0 / 16.0;
-      const double fs5 = 5.0 / 16.0;
-      const double fs1 = 1.0 / 16.0;
-
-      for (var by = 0; by < bandH; by++) {
-        final lumRowStart = by * w;
-        for (var px = 0; px < w; px++) {
-          final idx = lumRowStart + px;
-          final oldVal = lum[idx];
-          final newVal = oldVal > 127.0 ? 255.0 : 0.0;
-          final err = oldVal - newVal;
-          lum[idx] = newVal; // Store dithered value
-
-          // Distribute error to neighbors.
-          if (px + 1 < w) lum[idx + 1] += err * fs7;
-          if (by + 1 < bandH) {
-            final nextRowStart = (by + 1) * w;
-            if (px > 0) lum[nextRowStart + px - 1] += err * fs3;
-            lum[nextRowStart + px] += err * fs5;
-            if (px + 1 < w) lum[nextRowStart + px + 1] += err * fs1;
-          }
-        }
+      switch (settings.dither) {
+        case DitherAlgorithm.floydSteinberg:
+          _ditherBandFloydSteinberg(bandLum, w, bandH);
+        case DitherAlgorithm.atkinson:
+          _ditherBandAtkinson(bandLum, w, bandH);
       }
 
-      // Pack dithered luminance into bits.
+      // ── Step 5: Pack dithered bits ──
       for (var by = 0; by < bandH; by++) {
         final lumRowStart = by * w;
         for (var bx = 0; bx < bytesPerRow; bx++) {
@@ -803,10 +822,8 @@ class CompositeRenderService {
           final baseX = bx * 8;
           for (var bit = 0; bit < 8; bit++) {
             final px = baseX + bit;
-            if (px < w) {
-              if (lum[lumRowStart + px] < 128.0) {
-                byte |= (0x80 >> bit);
-              }
+            if (px < w && bandLum[lumRowStart + px] < 128.0) {
+              byte |= (0x80 >> bit);
             }
           }
           buf[pos++] = byte;
@@ -815,11 +832,9 @@ class CompositeRenderService {
 
       // Feed + cut on last band (skipped when caller will append a QR band).
       if (isLast && addCut) {
-        // ESC d n — feed n lines.
         buf[pos++] = 0x1B;
         buf[pos++] = 0x64;
         buf[pos++] = 0x03;
-        // GS V A n — partial cut.
         buf[pos++] = 0x1D;
         buf[pos++] = 0x56;
         buf[pos++] = 0x41;
@@ -830,6 +845,55 @@ class CompositeRenderService {
     }
 
     return bands;
+  }
+
+  /// Floyd-Steinberg error diffusion on a Float64List band buffer (in-place).
+  static void _ditherBandFloydSteinberg(Float64List buf, int w, int h) {
+    const double fs7 = 7.0 / 16.0;
+    const double fs3 = 3.0 / 16.0;
+    const double fs5 = 5.0 / 16.0;
+    const double fs1 = 1.0 / 16.0;
+    for (var by = 0; by < h; by++) {
+      final rowOff = by * w;
+      for (var px = 0; px < w; px++) {
+        final idx = rowOff + px;
+        final oldVal = buf[idx];
+        final newVal = oldVal > 127.0 ? 255.0 : 0.0;
+        final err = oldVal - newVal;
+        buf[idx] = newVal;
+        if (px + 1 < w) buf[idx + 1] += err * fs7;
+        if (by + 1 < h) {
+          final nextRow = (by + 1) * w;
+          if (px > 0) buf[nextRow + px - 1] += err * fs3;
+          buf[nextRow + px] += err * fs5;
+          if (px + 1 < w) buf[nextRow + px + 1] += err * fs1;
+        }
+      }
+    }
+  }
+
+  /// Atkinson error diffusion on a Float64List band buffer (in-place).
+  static void _ditherBandAtkinson(Float64List buf, int w, int h) {
+    const double atkC = 1.0 / 8.0;
+    for (var by = 0; by < h; by++) {
+      final rowOff = by * w;
+      for (var px = 0; px < w; px++) {
+        final idx = rowOff + px;
+        final oldVal = buf[idx];
+        final newVal = oldVal > 127.0 ? 255.0 : 0.0;
+        final err = (oldVal - newVal) * atkC;
+        buf[idx] = newVal;
+        if (px + 1 < w) buf[idx + 1] += err;
+        if (px + 2 < w) buf[idx + 2] += err;
+        if (by + 1 < h) {
+          final nextRow = (by + 1) * w;
+          if (px > 0) buf[nextRow + px - 1] += err;
+          buf[nextRow + px] += err;
+          if (px + 1 < w) buf[nextRow + px + 1] += err;
+        }
+        if (by + 2 < h) buf[(by + 2) * w + px] += err;
+      }
+    }
   }
 
   /// Encode ESC/POS raster bytes from a B&W print canvas using band-based

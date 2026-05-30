@@ -98,15 +98,18 @@ class _ScreensaverScreenState extends State<ScreensaverScreen>
 
     if (_hiddenTaps.length >= _requiredTaps) {
       _hiddenTaps.clear();
-      context.push('/home').then((_) {
-        // Reload config when returning from home
-        if (mounted) {
-          _videoController?.dispose();
-          _videoController = null;
-          setState(() => _loadConfig());
-        }
-      });
+      _goToHome();
     }
+  }
+
+  void _goToHome() {
+    context.push('/home').then((_) {
+      if (mounted) {
+        _videoController?.dispose();
+        _videoController = null;
+        setState(() => _loadConfig());
+      }
+    });
   }
 
   @override
@@ -130,7 +133,7 @@ class _ScreensaverScreenState extends State<ScreensaverScreen>
           ),
 
 
-          // ── Hidden access zone ──
+          // ── Hidden access zone (bottom-left, 5 taps) ──
           Positioned(
             left: 0,
             bottom: 0,
@@ -138,6 +141,32 @@ class _ScreensaverScreenState extends State<ScreensaverScreen>
               behavior: HitTestBehavior.opaque,
               onTap: _onHiddenTap,
               child: const SizedBox(width: 80, height: 80),
+            ),
+          ),
+
+          // ── Settings icon (top-right) ──
+          Positioned(
+            top: 0,
+            right: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: GestureDetector(
+                  onTap: _goToHome,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.settings_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ],
