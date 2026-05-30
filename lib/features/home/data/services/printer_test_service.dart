@@ -119,6 +119,57 @@ class PrinterTestService {
     }
   }
 
+  /// Send pre-encoded ESC/POS bands to a printer.
+  ///
+  /// Each band is written separately so the native pacing layer can drain
+  /// the previous one before queuing the next — identical to the real
+  /// session print path. Used by the image-processing test page.
+  Future<void> printBands(
+    PrinterInfo printerInfo,
+    List<Uint8List> bands,
+  ) async {
+    if (printerInfo.connectionType == PrinterConnectionType.usb) {
+      final channel = NativeUsbChannel();
+      final connected = await channel.connect(printerInfo.address);
+      if (!connected) {
+        throw Exception(
+          'Gagal terhubung ke printer USB "${printerInfo.name}". '
+          'Pastikan kabel OTG terpasang dengan benar.',
+        );
+      }
+      try {
+        for (final band in bands) {
+          final ok = await channel.write(band);
+          if (!ok) {
+            throw Exception('Gagal mengirim data ke printer USB.');
+          }
+        }
+      } finally {
+        await channel.disconnect();
+      }
+    } else {
+      await _ensureBluetoothPermissions();
+      final channel = NativeBluetoothChannel();
+      final connected = await channel.connect(printerInfo.address);
+      if (!connected) {
+        throw Exception(
+          'Gagal terhubung ke printer "${printerInfo.name}". '
+          'Pastikan printer menyala dan sudah di-pair.',
+        );
+      }
+      try {
+        for (final band in bands) {
+          final ok = await channel.write(band);
+          if (!ok) {
+            throw Exception('Gagal mengirim data ke printer Bluetooth.');
+          }
+        }
+      } finally {
+        await channel.disconnect();
+      }
+    }
+  }
+
   /// Generate ESC/POS test receipt bytes.
   Future<List<int>> _generateTestReceipt(PrinterInfo printerInfo) async {
     final List<int> bytes = [];

@@ -8,7 +8,6 @@ import 'package:video_player/video_player.dart';
 
 import '../../../../../shared/core/theme/app_colors.dart';
 import '../../../../../shared/core/theme/app_spacing.dart';
-import '../../../../../shared/core/widgets/noise_background.dart';
 import '../../../../../shared/data/datasources/storage_service.dart';
 import '../../../../../shared/widgets/memoir_button.dart';
 import '../../../../../shared/widgets/memoir_section_card.dart';
@@ -261,7 +260,6 @@ class _DefaultPreview extends StatelessWidget {
         child: const Stack(
           children: [
             Positioned.fill(child: ColoredBox(color: AppColors.surface)),
-            Positioned.fill(child: RepaintBoundary(child: NoiseBackground())),
             Center(
               child: Text(
                 'Default Background',

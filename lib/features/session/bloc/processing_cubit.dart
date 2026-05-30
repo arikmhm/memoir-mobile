@@ -36,6 +36,7 @@ class ProcessingCubit extends Cubit<ProcessingState> {
 
   String? _digitalFilePath;
   List<Uint8List>? _printBands;
+  Uint8List? _softfileQrBytes;
 
   // Retained for rendering after payment
   Template? _template;
@@ -54,6 +55,13 @@ class ProcessingCubit extends Cubit<ProcessingState> {
        _renderService = renderService,
        _storageService = storageService,
        super(const ProcessingInitial());
+
+  /// Retained template — exposed so views can render the composite preview
+  /// during rendering/printing steps.
+  Template? get template => _template;
+
+  /// Retained captured photos — exposed for preview rendering in views.
+  Map<int, String>? get capturedPhotos => _capturedPhotos;
 
   /// Start the processing flow — creates transaction then awaits payment.
   Future<void> startProcessing({
@@ -269,10 +277,34 @@ class ProcessingCubit extends Cubit<ProcessingState> {
         template: _template!,
         capturedPhotos: _capturedPhotos!,
         hasDigitalCopy: _hasDigitalCopy,
+        settings: ProcessingSettings(
+          thermalDensity: _storageService.thermalDensity,
+          dither: DitherAlgorithm.fromKey(_storageService.ditherAlgorithm),
+          sharpenAmount: _storageService.sharpenAmount,
+          brightness: _storageService.brightness,
+        ),
       );
 
       _printBands = composite.printBands;
       _digitalFilePath = composite.digitalFilePath;
+
+      // Pre-build softfile QR band so it can be appended after each photo copy.
+      _softfileQrBytes = null;
+      if (_hasDigitalCopy) {
+        final configJson = _storageService.kioskConfigJson;
+        if (configJson != null) {
+          final config = KioskConfig.fromJsonString(configJson);
+          final base = config.sessionPreviewUrl;
+          if (base != null && base.isNotEmpty) {
+            final trimmed = base.endsWith('/')
+                ? base.substring(0, base.length - 1)
+                : base;
+            _softfileQrBytes = await _printService.buildSoftfileQrBand(
+              '$trimmed/${transaction.id}',
+            );
+          }
+        }
+      }
 
       // ── Step 4: Start upload in background (parallel with printing) ──
       if (_hasDigitalCopy && _digitalFilePath != null) {
@@ -417,6 +449,10 @@ class ProcessingCubit extends Cubit<ProcessingState> {
 
         try {
           await _printService.sendData(bands: _printBands!);
+          // Softfile: append QR band (with cut) after each photo copy.
+          if (_softfileQrBytes != null) {
+            await _printService.sendData(bands: [_softfileQrBytes!]);
+          }
         } catch (e) {
           emit(ProcessingPrintError(
             transaction: transaction,
@@ -491,6 +527,9 @@ class ProcessingCubit extends Cubit<ProcessingState> {
 
         try {
           await _printService.sendData(bands: _printBands!);
+          if (_softfileQrBytes != null) {
+            await _printService.sendData(bands: [_softfileQrBytes!]);
+          }
         } catch (e) {
           emit(ProcessingPrintError(
             transaction: s.transaction,

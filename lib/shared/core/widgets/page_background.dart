@@ -5,12 +5,11 @@ import 'package:video_player/video_player.dart';
 
 import '../../../di.dart';
 import '../../data/datasources/storage_service.dart';
-import 'noise_background.dart';
 
 /// Full-size background widget for session screens.
 ///
 /// Reads background config from [StorageService] using [pageKey] and renders:
-/// - 'default' → [NoiseBackground] texture
+/// - 'default' → solid white background
 /// - 'image'   → fullscreen image file
 /// - 'video'   → fullscreen looping video (muted)
 ///
@@ -72,8 +71,7 @@ class _PageBackgroundState extends State<PageBackground> {
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
-        errorBuilder: (_, _, _) =>
-            const RepaintBoundary(child: NoiseBackground()),
+        errorBuilder: (_, _, _) => const ColoredBox(color: Colors.white),
       );
     }
     if (_bgType == 'video') {
@@ -89,6 +87,6 @@ class _PageBackgroundState extends State<PageBackground> {
       }
       return const ColoredBox(color: Colors.black);
     }
-    return const RepaintBoundary(child: NoiseBackground());
+    return const ColoredBox(color: Colors.white);
   }
 }

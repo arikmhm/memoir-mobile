@@ -223,6 +223,44 @@ class StorageService {
   Future<void> setReceiptPrintEnabled(bool enabled) =>
       _prefs.setBool(_receiptPrintEnabledKey, enabled);
 
+  // Image processing — thermal print tuning.
+  // Defaults match the constants previously hardcoded in
+  // CompositeRenderService (density 2, Floyd-Steinberg, sharpen 0.25,
+  // brightness +8).
+  static const _thermalDensityKey = 'processing.thermalDensity';
+  static const _ditherAlgorithmKey = 'processing.ditherAlgorithm';
+  static const _sharpenAmountKey = 'processing.sharpenAmount';
+  static const _brightnessKey = 'processing.brightness';
+
+  int get thermalDensity => _prefs.getInt(_thermalDensityKey) ?? 2;
+  Future<void> setThermalDensity(int level) =>
+      _prefs.setInt(_thermalDensityKey, level.clamp(0, 8));
+
+  /// Dither algorithm: 'fs' (Floyd-Steinberg) or 'atkinson'.
+  String get ditherAlgorithm =>
+      _prefs.getString(_ditherAlgorithmKey) ?? 'fs';
+  Future<void> setDitherAlgorithm(String algo) =>
+      _prefs.setString(_ditherAlgorithmKey, algo);
+
+  double get sharpenAmount =>
+      _prefs.getDouble(_sharpenAmountKey) ?? 0.25;
+  Future<void> setSharpenAmount(double amount) =>
+      _prefs.setDouble(_sharpenAmountKey, amount.clamp(0.0, 1.0));
+
+  /// Brightness offset added after gamma. Range -30..+30, default +8.
+  double get brightness => _prefs.getDouble(_brightnessKey) ?? 8.0;
+  Future<void> setBrightness(double value) =>
+      _prefs.setDouble(_brightnessKey, value.clamp(-30.0, 30.0));
+
+  /// Reset image-processing tuning to defaults (density 2, FS, sharpen 0.25,
+  /// brightness +8). Clears overrides so getters fall back to `??` defaults.
+  Future<void> resetImageProcessingSettings() async {
+    await _prefs.remove(_thermalDensityKey);
+    await _prefs.remove(_ditherAlgorithmKey);
+    await _prefs.remove(_sharpenAmountKey);
+    await _prefs.remove(_brightnessKey);
+  }
+
   // ─── Confirmation Settings ──────────────────────────────────
 
   // Default total print count

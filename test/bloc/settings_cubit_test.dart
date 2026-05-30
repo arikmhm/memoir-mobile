@@ -8,6 +8,7 @@ import 'package:memoir_v1/features/home/bloc/home_cubit.dart';
 import 'package:memoir_v1/features/home/bloc/home_state.dart';
 import 'package:memoir_v1/features/home/data/services/camera_test_service.dart';
 import 'package:memoir_v1/features/home/data/services/printer_test_service.dart';
+import 'package:memoir_v1/features/session/data/services/composite_render_service.dart';
 import 'package:memoir_v1/features/startup/data/repositories/startup_repository.dart';
 import 'package:memoir_v1/shared/data/datasources/storage_service.dart';
 
@@ -16,6 +17,9 @@ import 'package:memoir_v1/shared/data/datasources/storage_service.dart';
 class MockCameraTestService extends Mock implements CameraTestService {}
 
 class MockPrinterTestService extends Mock implements PrinterTestService {}
+
+class MockCompositeRenderService extends Mock
+    implements CompositeRenderService {}
 
 class MockStorageService extends Mock implements StorageService {}
 
@@ -26,6 +30,7 @@ class MockAppCubit extends Mock implements AppCubit {}
 void main() {
   late MockCameraTestService mockCameraService;
   late MockPrinterTestService mockPrinterService;
+  late MockCompositeRenderService mockRenderService;
   late MockStorageService mockStorageService;
   late MockStartupRepository mockStartupRepository;
   late MockAppCubit mockAppCubit;
@@ -33,6 +38,7 @@ void main() {
   setUp(() {
     mockCameraService = MockCameraTestService();
     mockPrinterService = MockPrinterTestService();
+    mockRenderService = MockCompositeRenderService();
     mockStorageService = MockStorageService();
     mockStartupRepository = MockStartupRepository();
     mockAppCubit = MockAppCubit();
@@ -51,6 +57,7 @@ void main() {
   HomeCubit buildCubit() => HomeCubit(
         cameraService: mockCameraService,
         printerService: mockPrinterService,
+        renderService: mockRenderService,
         storageService: mockStorageService,
         startupRepository: mockStartupRepository,
         appCubit: mockAppCubit,

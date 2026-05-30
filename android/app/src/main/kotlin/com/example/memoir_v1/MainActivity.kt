@@ -311,10 +311,15 @@ class MainActivity : FlutterActivity() {
         }
 
         if (!manager.hasPermission(device)) {
-            // Request permission and wait via broadcast receiver
+            // Request permission and wait via broadcast receiver.
+            //
+            // Android 14+ (targetSdk 34) disallows implicit intents in mutable
+            // PendingIntents. USB permission requires FLAG_MUTABLE so the system
+            // can attach EXTRA_DEVICE / EXTRA_PERMISSION_GRANTED — make the intent
+            // explicit by setting the package to our own.
             val permissionIntent = PendingIntent.getBroadcast(
                 this, 0,
-                Intent(ACTION_USB_PERMISSION),
+                Intent(ACTION_USB_PERMISSION).setPackage(packageName),
                 PendingIntent.FLAG_MUTABLE,
             )
             val receiver = object : BroadcastReceiver() {

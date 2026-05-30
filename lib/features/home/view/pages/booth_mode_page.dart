@@ -4,6 +4,7 @@ import '../../../../di.dart';
 import '../../../../shared/core/theme/app_colors.dart';
 import '../../../../shared/core/theme/app_spacing.dart';
 import '../../../../shared/data/datasources/storage_service.dart';
+import '../../../../shared/widgets/menu_header_card.dart';
 import '../widgets/screen_configs/booth_settings_section.dart';
 
 class BoothModePage extends StatelessWidget {
@@ -12,7 +13,7 @@ class BoothModePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.surfaceVariant,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -43,7 +44,19 @@ class BoothModePage extends StatelessWidget {
           horizontal: AppSpacing.screenHorizontal,
           vertical: AppSpacing.md,
         ),
-        child: BoothSettingsSection(storageService: sl<StorageService>()),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const MenuHeaderCard(
+              icon: Icons.tune_outlined,
+              title: 'Mode Booth',
+              description:
+                  'Tentukan mode operasi (Normal/Event), metode pembayaran, dan pengaturan cetak default.',
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            BoothSettingsSection(storageService: sl<StorageService>()),
+          ],
+        ),
       ),
     );
   }

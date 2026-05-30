@@ -2,13 +2,14 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../di.dart';
 import '../../../shared/core/theme/app_colors.dart';
+import '../../../shared/core/widgets/global_session_countdown_bar.dart';
 import '../../../shared/core/widgets/page_background.dart';
-import '../../../shared/core/widgets/session_countdown_bar.dart';
 import '../../../shared/core/theme/app_spacing.dart';
 import '../../../shared/data/datasources/storage_service.dart';
 import '../../../shared/data/models/template.dart';
@@ -31,7 +32,7 @@ class PhotoSessionScreen extends StatefulWidget {
 }
 
 class _PhotoSessionScreenState extends State<PhotoSessionScreen>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   CameraController? _cameraController;
   bool _isCameraReady = false;
   String? _cameraError;
@@ -40,6 +41,11 @@ class _PhotoSessionScreenState extends State<PhotoSessionScreen>
 
   late final AnimationController _slotFadeController;
   late final Animation<double> _slotFadeAnimation;
+
+  late final AnimationController _activePulseController;
+  late final Animation<double> _activePulseAnimation;
+
+  late final AnimationController _countdownAnimController;
 
   /// Captured photos keyed by slot index.
   final Map<int, String> _capturedPhotos = {};
@@ -72,6 +78,20 @@ class _PhotoSessionScreenState extends State<PhotoSessionScreen>
     );
     _slotFadeAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
       CurvedAnimation(parent: _slotFadeController, curve: Curves.easeInOut),
+    );
+    _activePulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+    _activePulseAnimation = Tween<double>(begin: 0.55, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _activePulseController,
+        curve: Curves.easeInOut,
+      ),
+    );
+    _countdownAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
     );
     _initCamera();
   }
@@ -127,6 +147,8 @@ class _PhotoSessionScreenState extends State<PhotoSessionScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _slotFadeController.dispose();
+    _activePulseController.dispose();
+    _countdownAnimController.dispose();
     _cameraController?.dispose();
     super.dispose();
   }
@@ -135,6 +157,7 @@ class _PhotoSessionScreenState extends State<PhotoSessionScreen>
   void _changeSlot(int newIndex) {
     if (newIndex == _activeSlotIndex) return;
     if (_slotFadeController.isAnimating) return;
+    HapticFeedback.selectionClick();
     _slotFadeController.forward().then((_) {
       if (!mounted) return;
       setState(() => _activeSlotIndex = newIndex);
@@ -148,17 +171,22 @@ class _PhotoSessionScreenState extends State<PhotoSessionScreen>
     }
     if (_countdownValue != null) return; // Already counting
 
+    HapticFeedback.mediumImpact();
+
     // Countdown from configured value → 1
     final start = sl<StorageService>().captureCountdown;
     for (var i = start; i >= 1; i--) {
       if (!mounted) return;
       setState(() => _countdownValue = i);
+      _countdownAnimController.forward(from: 0);
+      HapticFeedback.lightImpact();
       await Future<void>.delayed(const Duration(seconds: 1));
     }
     if (!mounted) return;
     setState(() => _countdownValue = null);
 
     try {
+      HapticFeedback.heavyImpact();
       final file = await _cameraController!.takePicture();
       _capturedPhotos[_activeSlotIndex] = file.path;
 
@@ -194,6 +222,32 @@ class _PhotoSessionScreenState extends State<PhotoSessionScreen>
       if (!_capturedPhotos.containsKey(i)) return i;
     }
     return null; // All slots filled
+  }
+
+  Future<void> _handleCancel() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Batalkan Sesi?'),
+        content: const Text(
+          'Foto yang sudah diambil akan hilang. Anda akan kembali ke pilih template.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Lanjutkan'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Batalkan'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      context.go('/select-template');
+    }
   }
 
   @override
@@ -233,6 +287,7 @@ class _PhotoSessionScreenState extends State<PhotoSessionScreen>
     }
 
     final slots = _photoSlots(template);
+    final filledCount = _capturedPhotos.length;
 
     return Scaffold(
       backgroundColor: AppColors.surface,
@@ -240,47 +295,123 @@ class _PhotoSessionScreenState extends State<PhotoSessionScreen>
         children: [
           const Positioned.fill(child: PageBackground(pageKey: 'photoSession')),
           SafeArea(
-        child: Column(
-          children: [
-            // ── Session countdown ──
-            SessionCountdownBar(
-              perPageTimeout: sl<StorageService>().photoSessionTimeout,
-            ),
-
-            // ── Template preview with live camera ──
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.screenHorizontal,
-                  vertical: AppSpacing.xl,
+            child: Column(
+              children: [
+                // ── Header with cancel + title/progress + timer chip ──
+                _Header(
+                  filledCount: filledCount,
+                  totalCount: slots.length,
+                  onCancel: _handleCancel,
                 ),
-                child: FadeTransition(
-                  opacity: _slotFadeAnimation,
-                  child: _SessionPreview(
-                    template: template,
-                    slots: slots,
-                    activeSlotIndex: _activeSlotIndex,
-                    capturedPhotos: _capturedPhotos,
-                    cameraController: _isCameraReady ? _cameraController : null,
-                    cameraError: _cameraError,
-                    countdownValue: _countdownValue,
-                    onSlotTap: _changeSlot,
+
+                // ── Template preview with live camera ──
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.screenHorizontal,
+                      vertical: AppSpacing.lg,
+                    ),
+                    child: FadeTransition(
+                      opacity: _slotFadeAnimation,
+                      child: _SessionPreview(
+                        template: template,
+                        slots: slots,
+                        activeSlotIndex: _activeSlotIndex,
+                        capturedPhotos: _capturedPhotos,
+                        cameraController:
+                            _isCameraReady ? _cameraController : null,
+                        cameraError: _cameraError,
+                        countdownValue: _countdownValue,
+                        countdownAnimation: _countdownAnimController,
+                        activePulseAnimation: _activePulseAnimation,
+                        onSlotTap: _changeSlot,
+                      ),
+                    ),
                   ),
                 ),
+
+                // ── Bottom controls ──
+                _BottomControls(
+                  slots: slots,
+                  activeSlotIndex: _activeSlotIndex,
+                  capturedPhotos: _capturedPhotos,
+                  isCapturing: _countdownValue != null,
+                  onCapture: () => _capturePhoto(slots),
+                  onSlotTap: _changeSlot,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Header ─────────────────────────────────────────────────────
+
+class _Header extends StatelessWidget {
+  final int filledCount;
+  final int totalCount;
+  final VoidCallback onCancel;
+
+  const _Header({
+    required this.filledCount,
+    required this.totalCount,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenHorizontal,
+        AppSpacing.md,
+        AppSpacing.screenHorizontal,
+        AppSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          // Cancel button
+          GestureDetector(
+            onTap: onCancel,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.close_rounded,
+                size: 22,
+                color: AppColors.textSecondary,
               ),
             ),
-
-            // ── Bottom controls ──
-            _BottomControls(
-              slots: slots,
-              activeSlotIndex: _activeSlotIndex,
-              capturedPhotos: _capturedPhotos,
-              onCapture: () => _capturePhoto(slots),
-              onSlotTap: _changeSlot,
-            ),
-          ],
-        ),
           ),
+          // Title + progress
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  'Sesi Foto',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Foto ${(filledCount + 1).clamp(1, totalCount)} dari $totalCount',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const GlobalSessionCountdownBar(compact: true),
         ],
       ),
     );
@@ -297,6 +428,8 @@ class _SessionPreview extends StatelessWidget {
   final CameraController? cameraController;
   final String? cameraError;
   final int? countdownValue;
+  final AnimationController countdownAnimation;
+  final Animation<double> activePulseAnimation;
   final ValueChanged<int> onSlotTap;
 
   const _SessionPreview({
@@ -307,6 +440,8 @@ class _SessionPreview extends StatelessWidget {
     required this.cameraController,
     required this.cameraError,
     required this.countdownValue,
+    required this.countdownAnimation,
+    required this.activePulseAnimation,
     required this.onSlotTap,
   });
 
@@ -421,29 +556,58 @@ class _SessionPreview extends StatelessWidget {
     if (capturedPath != null) {
       return GestureDetector(
         onTap: () => onSlotTap(slotIndex),
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border.all(
-              color:
-                  isActive ? AppColors.brandPrimary : Colors.transparent,
-              width: isActive ? 2 : 0,
-            ),
-          ),
-          child: ClipRect(
-            child: Transform.flip(
-              flipX: true,
-              child: Image.file(
-                File(capturedPath),
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ClipRect(
+              child: Transform.flip(
+                flipX: true,
+                child: Image.file(
+                  File(capturedPath),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                ),
               ),
             ),
-          ),
+            // Pulsing active border for already-captured slots that user re-selects
+            if (isActive)
+              AnimatedBuilder(
+                animation: activePulseAnimation,
+                builder: (_, _) => Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: AppColors.brandPrimary.withValues(
+                        alpha: activePulseAnimation.value,
+                      ),
+                      width: 2.5,
+                    ),
+                  ),
+                ),
+              )
+            else
+              // Subtle "tap to retake" hint via small badge in corner
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.92),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.check,
+                    size: (el.width * scale * 0.08).clamp(8, 14).toDouble(),
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+          ],
         ),
       );
     }
 
-    // Active slot: show camera preview
+    // Active slot: show camera preview with pulsing border
     if (isActive) {
       return Stack(
         fit: StackFit.expand,
@@ -452,8 +616,26 @@ class _SessionPreview extends StatelessWidget {
             controller: cameraController,
             error: cameraError,
           ),
+          AnimatedBuilder(
+            animation: activePulseAnimation,
+            builder: (_, _) => IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: AppColors.brandPrimary.withValues(
+                      alpha: activePulseAnimation.value,
+                    ),
+                    width: 2.5,
+                  ),
+                ),
+              ),
+            ),
+          ),
           if (countdownValue != null)
-            _CountdownOverlay(value: countdownValue!),
+            _CountdownOverlay(
+              value: countdownValue!,
+              animation: countdownAnimation,
+            ),
         ],
       );
     }
@@ -512,15 +694,16 @@ class _CameraSlot extends StatelessWidget {
             children: [
               const Icon(
                 Icons.videocam_off_outlined,
-                color: AppColors.textDisabled,
-                size: 24,
+                color: AppColors.error,
+                size: 28,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               Text(
                 error!,
                 style: const TextStyle(
-                  fontSize: 9,
-                  color: AppColors.textDisabled,
+                  fontSize: 11,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w500,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -534,30 +717,40 @@ class _CameraSlot extends StatelessWidget {
       return Container(
         color: AppColors.surfaceContainer,
         child: const Center(
-          child: SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppColors.textDisabled,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: AppColors.brandPrimary,
+                ),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Mempersiapkan kamera...',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
         ),
       );
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: AppColors.brandPrimary, width: 2),
-      ),
-      child: ClipRect(
-        child: FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: controller!.value.previewSize!.height,
-            height: controller!.value.previewSize!.width,
-            child: CameraPreview(controller!),
-          ),
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: controller!.value.previewSize!.height,
+          height: controller!.value.previewSize!.width,
+          child: CameraPreview(controller!),
         ),
       ),
     );
@@ -566,26 +759,84 @@ class _CameraSlot extends StatelessWidget {
 
 // ─── Countdown Overlay ──────────────────────────────────────────
 
+/// Dramatic countdown overlay: scale+fade animation per number,
+/// with a rotating ring backing for emphasis.
 class _CountdownOverlay extends StatelessWidget {
   final int value;
+  final AnimationController animation;
 
-  const _CountdownOverlay({required this.value});
+  const _CountdownOverlay({required this.value, required this.animation});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: Colors.black.withAlpha(100),
-      child: Center(
-        child: Text(
-          '$value',
-          style: const TextStyle(
-            fontSize: 64,
-            fontWeight: FontWeight.w300,
-            color: Colors.white,
-            letterSpacing: 2,
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (_, _) {
+        final t = animation.value;
+        // Scale: pops in big, settles smaller
+        final scale = 0.5 + (1.4 - 0.5) * Curves.easeOutBack.transform(
+          t.clamp(0.0, 1.0),
+        );
+        // Opacity: fade in fast, hold, slight fade out
+        final opacity = t < 0.15
+            ? (t / 0.15)
+            : t > 0.85
+                ? (1.0 - (t - 0.85) / 0.15) * 0.85 + 0.15
+                : 1.0;
+        // Ring grows + fades
+        final ringScale = 0.8 + t * 1.2;
+        final ringOpacity = (1.0 - t).clamp(0.0, 1.0) * 0.6;
+
+        return Container(
+          color: Colors.black.withAlpha(120),
+          child: Center(
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Expanding ring
+                Transform.scale(
+                  scale: ringScale,
+                  child: Opacity(
+                    opacity: ringOpacity,
+                    child: Container(
+                      width: 140,
+                      height: 140,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3),
+                      ),
+                    ),
+                  ),
+                ),
+                // Big number
+                Opacity(
+                  opacity: opacity,
+                  child: Transform.scale(
+                    scale: scale,
+                    child: Text(
+                      '$value',
+                      style: const TextStyle(
+                        fontSize: 120,
+                        fontWeight: FontWeight.w200,
+                        color: Colors.white,
+                        letterSpacing: 2,
+                        height: 1.0,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black54,
+                            blurRadius: 20,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -596,6 +847,7 @@ class _BottomControls extends StatelessWidget {
   final List<TemplateElement> slots;
   final int activeSlotIndex;
   final Map<int, String> capturedPhotos;
+  final bool isCapturing;
   final VoidCallback onCapture;
   final ValueChanged<int> onSlotTap;
 
@@ -603,6 +855,7 @@ class _BottomControls extends StatelessWidget {
     required this.slots,
     required this.activeSlotIndex,
     required this.capturedPhotos,
+    required this.isCapturing,
     required this.onCapture,
     required this.onSlotTap,
   });
@@ -610,107 +863,208 @@ class _BottomControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.screenHorizontal,
-        vertical: AppSpacing.md,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenHorizontal,
+        AppSpacing.md,
+        AppSpacing.screenHorizontal,
+        AppSpacing.xl,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Slot indicators
+          // Slot indicators (clean dot language)
           if (slots.length > 1) ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(slots.length, (i) {
-                final isFilled = capturedPhotos.containsKey(i);
-                final isActive = i == activeSlotIndex;
-                return GestureDetector(
-                  onTap: () => onSlotTap(i),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: isActive ? 32 : 24,
-                    height: isActive ? 32 : 24,
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.xs,
-                    ),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isActive
-                          ? AppColors.brandPrimary
-                          : isFilled
-                              ? AppColors.surfaceContainer
-                              : AppColors.surface,
-                      border: Border.all(
-                        color: isActive
-                            ? AppColors.brandPrimary
-                            : isFilled
-                                ? AppColors.textSecondary
-                                : AppColors.border,
-                        width: isActive ? 2 : 1,
-                      ),
-                    ),
-                    child: Center(
-                      child: isFilled && !isActive
-                          ? const Icon(
-                              Icons.check,
-                              size: 12,
-                              color: AppColors.textSecondary,
-                            )
-                          : Text(
-                              '${i + 1}',
-                              style: TextStyle(
-                                fontSize: isActive ? 12 : 10,
-                                fontWeight: FontWeight.w600,
-                                color: isActive
-                                    ? AppColors.brandAccent
-                                    : AppColors.textDisabled,
-                              ),
-                            ),
-                    ),
-                  ),
-                );
-              }),
+            _SlotIndicators(
+              total: slots.length,
+              activeIndex: activeSlotIndex,
+              capturedPhotos: capturedPhotos,
+              onTap: onSlotTap,
             ),
-            const SizedBox(height: AppSpacing.md),
+            const SizedBox(height: AppSpacing.lg),
           ],
 
           // Capture button
-          _CaptureButton(onTap: onCapture),
+          _CaptureButton(onTap: onCapture, isCapturing: isCapturing),
         ],
       ),
     );
   }
 }
 
-// ─── Capture Button ─────────────────────────────────────────────
+// ─── Slot Indicators (clean dots) ───────────────────────────────
 
-class _CaptureButton extends StatelessWidget {
-  final VoidCallback onTap;
+class _SlotIndicators extends StatelessWidget {
+  final int total;
+  final int activeIndex;
+  final Map<int, String> capturedPhotos;
+  final ValueChanged<int> onTap;
 
-  const _CaptureButton({required this.onTap});
+  const _SlotIndicators({
+    required this.total,
+    required this.activeIndex,
+    required this.capturedPhotos,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Center(
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: AppColors.brandPrimary,
-              width: 3,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(total, (i) {
+        final isFilled = capturedPhotos.containsKey(i);
+        final isActive = i == activeIndex;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+          child: GestureDetector(
+            onTap: () => onTap(i),
+            behavior: HitTestBehavior.opaque,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+              width: isActive ? 28 : (isFilled ? 14 : 10),
+              height: isActive ? 10 : (isFilled ? 14 : 10),
+              decoration: BoxDecoration(
+                shape: isActive ? BoxShape.rectangle : BoxShape.circle,
+                borderRadius:
+                    isActive ? BorderRadius.circular(5) : null,
+                color: isActive
+                    ? AppColors.brandPrimary
+                    : isFilled
+                        ? AppColors.success
+                        : AppColors.textDisabled.withValues(alpha: 0.5),
+              ),
+              child: isFilled && !isActive
+                  ? const Icon(
+                      Icons.check,
+                      size: 9,
+                      color: Colors.white,
+                    )
+                  : null,
             ),
           ),
-          child: Center(
+        );
+      }),
+    );
+  }
+}
+
+// ─── Capture Button (modern, larger, with pulse) ───────────────
+
+class _CaptureButton extends StatefulWidget {
+  final VoidCallback onTap;
+  final bool isCapturing;
+
+  const _CaptureButton({required this.onTap, required this.isCapturing});
+
+  @override
+  State<_CaptureButton> createState() => _CaptureButtonState();
+}
+
+class _CaptureButtonState extends State<_CaptureButton>
+    with SingleTickerProviderStateMixin {
+  bool _pressed = false;
+  late final AnimationController _pulseController;
+  late final Animation<double> _pulseAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = widget.isCapturing;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: disabled ? null : (_) => setState(() => _pressed = true),
+      onTapCancel: disabled ? null : () => setState(() => _pressed = false),
+      onTapUp: disabled
+          ? null
+          : (_) {
+              setState(() => _pressed = false);
+              widget.onTap();
+            },
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: AnimatedBuilder(
+          animation: _pulseAnim,
+          builder: (_, child) {
+            return SizedBox(
+              width: 110,
+              height: 110,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Pulsing halo ring (only when ready, not capturing)
+                  if (!disabled)
+                    Container(
+                      width: 90 + (_pulseAnim.value * 18),
+                      height: 90 + (_pulseAnim.value * 18),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.brandPrimary.withValues(
+                            alpha: (1.0 - _pulseAnim.value) * 0.35,
+                          ),
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  child!,
+                ],
+              ),
+            );
+          },
+          child: AnimatedOpacity(
+            opacity: disabled ? 0.55 : 1.0,
+            duration: const Duration(milliseconds: 150),
             child: Container(
-              width: 44,
-              height: 44,
-              decoration: const BoxDecoration(
+              width: 84,
+              height: 84,
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.brandPrimary,
+                color: Colors.white,
+                border: Border.all(
+                  color: AppColors.brandPrimary,
+                  width: 3,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 18,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.brandPrimary,
+                  ),
+                  child: const Icon(
+                    Icons.camera_alt_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
               ),
             ),
           ),

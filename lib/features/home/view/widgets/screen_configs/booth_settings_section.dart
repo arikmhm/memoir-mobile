@@ -15,7 +15,6 @@ class BoothSettingsSection extends StatefulWidget {
 }
 
 class _BoothSettingsSectionState extends State<BoothSettingsSection> {
-  int _confirmationTimeout = 180;
   int _defaultPrintCount = 1;
   bool _softcopyEnabled = true;
   String _paymentMethod = 'CASH';
@@ -24,7 +23,6 @@ class _BoothSettingsSectionState extends State<BoothSettingsSection> {
   @override
   void initState() {
     super.initState();
-    _confirmationTimeout = widget.storageService.confirmationTimeout;
     _defaultPrintCount = widget.storageService.defaultPrintCount;
     _softcopyEnabled = widget.storageService.isSoftcopyEnabled;
     _paymentMethod = widget.storageService.paymentActiveMode;
@@ -168,22 +166,6 @@ class _BoothSettingsSectionState extends State<BoothSettingsSection> {
 
         // ── NORMAL MODE ONLY ──
         if (_operationMode == 'normal') ...[
-          MemoirSectionCard(
-            label: 'Waktu Timeout',
-            subtitle: 'Otomatis kembali ke screensaver jika tidak ada input.',
-            icon: Icons.timer_outlined,
-            children: [
-              TimeoutOptionChips(
-                options: const [60, 120, 180, 300],
-                selected: _confirmationTimeout,
-                onSelected: (v) {
-                  setState(() => _confirmationTimeout = v);
-                  widget.storageService.setConfirmationTimeout(v);
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
           MemoirSectionCard(
             label: 'Metode Pembayaran',
             subtitle: 'Pilih metode pembayaran yang tersedia.',

@@ -1,13 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../di.dart';
 import '../../../shared/core/theme/app_colors.dart';
+import '../../../shared/core/widgets/global_session_countdown_bar.dart';
 import '../../../shared/core/widgets/page_background.dart';
-import '../../../shared/core/widgets/session_countdown_bar.dart';
 import '../../../shared/core/theme/app_spacing.dart';
 import '../../../shared/core/utils/formatters.dart';
 import '../../../shared/data/datasources/storage_service.dart';
@@ -97,6 +98,8 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
     final price = _resolvePrice(template, kioskConfig);
     final paymentMode = sl<StorageService>().paymentActiveMode;
 
+    HapticFeedback.mediumImpact();
+
     context.go('/processing', extra: {
       'template': template,
       'capturedPhotos': Map<int, String>.from(widget.capturedPhotos),
@@ -155,62 +158,57 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
         children: [
           const Positioned.fill(child: PageBackground(pageKey: 'confirmation')),
           SafeArea(
-        child: Column(
-          children: [
-            // ── Header ──
-            const _ConfirmHeader(),
+            child: Column(
+              children: [
+                // ── Header with title + timer chip ──
+                const _ConfirmHeader(),
 
-            // ── Session countdown ──
-            SessionCountdownBar(
-              perPageTimeout: sl<StorageService>().confirmationTimeout,
-            ),
-
-            // ── Preview (takes remaining top space) ──
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.screenHorizontal,
-                  vertical: AppSpacing.md,
-                ),
-                child: _MiniPreview(
-                  template: template,
-                  capturedPhotos: widget.capturedPhotos,
-                ),
-              ),
-            ),
-
-            // ── Transaction details (pinned bottom) ──
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.screenHorizontal,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _OptionsCard(
-                    printQty: _printQty,
-                    pricePerExtra: price.extraPrintPrice,
-                    onQtyChanged: (qty) =>
-                        setState(() => _printQty = qty),
-                    hasDigitalCopy: _hasDigitalCopy,
-                    digitalCopyPrice: price.digitalCopyPrice,
-                    onDigitalCopyChanged: (v) =>
-                        setState(() => _hasDigitalCopy = v),
+                // ── Preview (takes remaining top space) ──
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.screenHorizontal,
+                      vertical: AppSpacing.md,
+                    ),
+                    child: _MiniPreview(
+                      template: template,
+                      capturedPhotos: widget.capturedPhotos,
+                    ),
                   ),
-                  const SizedBox(height: AppSpacing.md),
-                  _PriceSummary(price: price, printQty: _printQty),
-                ],
-              ),
-            ),
+                ),
 
-            // ── Bottom: payment + confirm ──
-            _ConfirmSection(
-              total: price.total,
-              paymentMode: paymentMode,
-              onConfirm: _confirm,
+                // ── Transaction details (pinned bottom) ──
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.screenHorizontal,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _OptionsCard(
+                        printQty: _printQty,
+                        pricePerExtra: price.extraPrintPrice,
+                        onQtyChanged: (qty) =>
+                            setState(() => _printQty = qty),
+                        hasDigitalCopy: _hasDigitalCopy,
+                        digitalCopyPrice: price.digitalCopyPrice,
+                        onDigitalCopyChanged: (v) =>
+                            setState(() => _hasDigitalCopy = v),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _PriceSummary(price: price, printQty: _printQty),
+                    ],
+                  ),
+                ),
+
+                // ── Bottom: payment + confirm ──
+                _ConfirmSection(
+                  total: price.total,
+                  paymentMode: paymentMode,
+                  onConfirm: _confirm,
+                ),
+              ],
             ),
-          ],
-        ),
           ),
         ],
       ),
@@ -245,22 +243,32 @@ class _ConfirmHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.screenHorizontal,
-        AppSpacing.lg,
-        AppSpacing.screenHorizontal,
         AppSpacing.md,
+        AppSpacing.screenHorizontal,
+        AppSpacing.sm,
       ),
-      child: Center(
-        child: Text(
-          'KONFIRMASI',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                letterSpacing: 4,
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
+      child: Row(
+        children: [
+          // Balance the timer chip on right
+          const SizedBox(width: 40),
+          Expanded(
+            child: Center(
+              child: Text(
+                'Konfirmasi Pesanan',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: AppColors.textPrimary,
+                ),
               ),
-        ),
+            ),
+          ),
+          const GlobalSessionCountdownBar(compact: true),
+        ],
       ),
     );
   }
@@ -303,31 +311,31 @@ class _MiniPreview extends StatelessWidget {
         final previewH = canvasH * scale;
 
         return Center(
-      child: Container(
-        width: previewW,
-        height: previewH,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: AppColors.surfaceContainer,
-          border: Border.all(color: AppColors.border),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(15),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
+          child: Container(
+            width: previewW,
+            height: previewH,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceContainer,
+              border: Border.all(color: AppColors.border),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(15),
+                  blurRadius: 20,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            _buildBackground(),
-            ...sortedElements.map(
-              (el) => _buildElement(el, scale, slots),
+            child: Stack(
+              children: [
+                _buildBackground(),
+                ...sortedElements.map(
+                  (el) => _buildElement(el, scale, slots),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
-    );
+          ),
+        );
       },
     );
   }
@@ -477,7 +485,7 @@ class _OptionsCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
@@ -501,7 +509,7 @@ class _OptionsCard extends StatelessWidget {
                       const SizedBox(height: AppSpacing.xxs),
                       Text(
                         '1 lembar termasuk harga dasar'
-                        '${pricePerExtra > 0 ? ' \u2022 +${Formatters.formatRupiah(pricePerExtra)}/lembar' : ''}',
+                        '${pricePerExtra > 0 ? ' • +${Formatters.formatRupiah(pricePerExtra)}/lembar' : ''}',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: AppColors.textSecondary,
                         ),
@@ -512,32 +520,46 @@ class _OptionsCard extends StatelessWidget {
                 Container(
                   decoration: BoxDecoration(
                     color: AppColors.surfaceVariant,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppColors.border),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _StepperButton(
-                        icon: Icons.remove,
+                        icon: Icons.remove_rounded,
                         enabled: printQty > 1,
-                        onTap: () => onQtyChanged(printQty - 1),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          onQtyChanged(printQty - 1);
+                        },
                       ),
                       SizedBox(
                         width: 40,
-                        child: Text(
-                          '$printQty',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 150),
+                          transitionBuilder: (child, anim) => ScaleTransition(
+                            scale: anim,
+                            child: FadeTransition(opacity: anim, child: child),
+                          ),
+                          child: Text(
+                            '$printQty',
+                            key: ValueKey(printQty),
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
                           ),
                         ),
                       ),
                       _StepperButton(
-                        icon: Icons.add,
+                        icon: Icons.add_rounded,
                         enabled: printQty < 10,
-                        onTap: () => onQtyChanged(printQty + 1),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          onQtyChanged(printQty + 1);
+                        },
                       ),
                     ],
                   ),
@@ -588,7 +610,10 @@ class _OptionsCard extends StatelessWidget {
                 ),
                 Switch.adaptive(
                   value: hasDigitalCopy,
-                  onChanged: onDigitalCopyChanged,
+                  onChanged: (v) {
+                    HapticFeedback.selectionClick();
+                    onDigitalCopyChanged(v);
+                  },
                   activeTrackColor: AppColors.brandPrimary,
                   activeThumbColor: AppColors.brandAccent,
                 ),
@@ -601,7 +626,7 @@ class _OptionsCard extends StatelessWidget {
   }
 }
 
-class _StepperButton extends StatelessWidget {
+class _StepperButton extends StatefulWidget {
   final IconData icon;
   final bool enabled;
   final VoidCallback onTap;
@@ -613,16 +638,45 @@ class _StepperButton extends StatelessWidget {
   });
 
   @override
+  State<_StepperButton> createState() => _StepperButtonState();
+}
+
+class _StepperButtonState extends State<_StepperButton> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: SizedBox(
-        width: 40,
-        height: 40,
-        child: Icon(
-          icon,
-          size: 18,
-          color: enabled ? AppColors.textPrimary : AppColors.textDisabled,
+      behavior: HitTestBehavior.opaque,
+      onTapDown: widget.enabled ? (_) => setState(() => _pressed = true) : null,
+      onTapCancel: widget.enabled ? () => setState(() => _pressed = false) : null,
+      onTapUp: widget.enabled
+          ? (_) {
+              setState(() => _pressed = false);
+              widget.onTap();
+            }
+          : null,
+      child: AnimatedScale(
+        scale: _pressed ? 0.88 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _pressed
+                ? AppColors.brandPrimary.withValues(alpha: 0.08)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(
+            widget.icon,
+            size: 20,
+            color: widget.enabled
+                ? AppColors.textPrimary
+                : AppColors.textDisabled,
+          ),
         ),
       ),
     );
@@ -647,7 +701,7 @@ class _PriceSummary extends StatelessWidget {
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
@@ -660,7 +714,7 @@ class _PriceSummary extends StatelessWidget {
             const SizedBox(height: AppSpacing.sm),
             _PriceRow(
               label:
-                  'Cetak tambahan (${printQty - 1}x \u00d7 ${Formatters.formatRupiah(price.extraPrintPrice)})',
+                  'Cetak tambahan (${printQty - 1}x × ${Formatters.formatRupiah(price.extraPrintPrice)})',
               amount: price.extraPrintTotal,
             ),
           ],
@@ -671,25 +725,39 @@ class _PriceSummary extends StatelessWidget {
               amount: price.digitalCopyTotal,
             ),
           ],
-          const SizedBox(height: AppSpacing.sm),
-          Container(height: 1, color: AppColors.border),
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: AppSpacing.md),
+          Container(height: 1.5, color: AppColors.textPrimary),
+          const SizedBox(height: AppSpacing.md),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Text(
-                'TOTAL',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                  letterSpacing: 1,
-                ),
-              ),
-              Text(
-                Formatters.formatRupiah(price.total),
+                'Total',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
+                ),
+              ),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                transitionBuilder: (child, anim) {
+                  final scale = Tween<double>(begin: 0.85, end: 1.0).animate(
+                    CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+                  );
+                  return ScaleTransition(
+                    scale: scale,
+                    child: FadeTransition(opacity: anim, child: child),
+                  );
+                },
+                child: Text(
+                  Formatters.formatRupiah(price.total),
+                  key: ValueKey(price.total),
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                    letterSpacing: -0.3,
+                  ),
                 ),
               ),
             ],
@@ -747,70 +815,97 @@ class _ConfirmSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    final (paymentLabel, paymentIcon) = switch (paymentMode) {
-      'CASH' => ('Tunai (Cash)', Icons.payments_outlined),
-      'STATIC_QRIS' => ('QRIS Statis', Icons.qr_code_2),
-      'PG' => ('Payment Gateway', Icons.credit_card_outlined),
-      _ => ('Tunai (Cash)', Icons.payments_outlined),
+    final buttonLabel = switch (paymentMode) {
+      'CASH' || 'STATIC_QRIS' => 'Konfirmasi Pembayaran',
+      'PG' => 'Bayar Sekarang',
+      _ => 'Konfirmasi',
     };
 
-    final buttonLabel = switch (paymentMode) {
-      'CASH' || 'STATIC_QRIS' => 'KONFIRMASI PEMBAYARAN',
-      'PG' => 'BAYAR SEKARANG',
-      _ => 'KONFIRMASI',
+    final buttonIcon = switch (paymentMode) {
+      'PG' => Icons.qr_code_scanner_rounded,
+      _ => Icons.check_circle_rounded,
     };
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.screenHorizontal,
-        AppSpacing.sm,
-        AppSpacing.screenHorizontal,
         AppSpacing.md,
+        AppSpacing.screenHorizontal,
+        AppSpacing.xxl,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Payment method indicator
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(paymentIcon, size: 14, color: AppColors.textSecondary),
-              const SizedBox(width: AppSpacing.xs + 2),
-              Text(
-                paymentLabel,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w500,
-                ),
+      child: _ConfirmButton(
+        label: buttonLabel,
+        icon: buttonIcon,
+        onPressed: onConfirm,
+      ),
+    );
+  }
+}
+
+// ─── Confirm Button (modern pill, dominant) ─────────────────────
+
+class _ConfirmButton extends StatefulWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  const _ConfirmButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  @override
+  State<_ConfirmButton> createState() => _ConfirmButtonState();
+}
+
+class _ConfirmButtonState extends State<_ConfirmButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onPressed();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          height: 60,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: AppColors.brandPrimary,
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.sm),
-
-          // Confirm button
-          SizedBox(
-            width: double.infinity,
-            height: AppSpacing.touchTarget + 8,
-            child: FilledButton(
-              onPressed: onConfirm,
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.brandPrimary,
-                foregroundColor: AppColors.brandAccent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 2,
-                ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(widget.icon, size: 22, color: Colors.white),
+              const SizedBox(width: 8),
+              Text(
+                widget.label,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: 0.6,
+                    ),
               ),
-              child: Text(buttonLabel),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -824,4 +919,3 @@ Color? _parseHexColor(String hex) {
   if (value == null) return null;
   return Color(hex.length == 6 ? 0xFF000000 | value : value);
 }
-

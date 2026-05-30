@@ -50,6 +50,28 @@ class CameraTestService {
     await _controller!.initialize();
   }
 
+  /// Capture a still image and return its file path.
+  ///
+  /// Camera must be initialized first via [initialize]. The plugin writes
+  /// the image to a temporary cache file and returns its path.
+  Future<String> takePicture() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) {
+      throw CameraException(
+        'CameraNotInitialized',
+        'Kamera belum siap. Aktifkan kamera terlebih dahulu.',
+      );
+    }
+    if (controller.value.isTakingPicture) {
+      throw CameraException(
+        'AlreadyCapturing',
+        'Kamera sedang memproses pengambilan gambar.',
+      );
+    }
+    final file = await controller.takePicture();
+    return file.path;
+  }
+
   /// Dispose the camera controller and free resources.
   Future<void> dispose() async {
     await _controller?.dispose();

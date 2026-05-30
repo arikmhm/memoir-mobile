@@ -109,9 +109,16 @@ void main() {
     registerFallbackValue(_mockPhotos);
     registerFallbackValue(FakePrintChannel());
     registerFallbackValue(PrinterConnectionType.bluetooth);
+    registerFallbackValue(const ProcessingSettings());
 
     // Default: normal mode (not event mode).
     when(() => mockStorageService.isEventMode).thenReturn(false);
+
+    // Default processing settings — match service defaults.
+    when(() => mockStorageService.thermalDensity).thenReturn(2);
+    when(() => mockStorageService.ditherAlgorithm).thenReturn('fs');
+    when(() => mockStorageService.sharpenAmount).thenReturn(0.25);
+    when(() => mockStorageService.brightness).thenReturn(8.0);
   });
 
   ProcessingCubit buildCubit() => ProcessingCubit(
@@ -127,6 +134,7 @@ void main() {
         template: any(named: 'template'),
         capturedPhotos: any(named: 'capturedPhotos'),
         hasDigitalCopy: any(named: 'hasDigitalCopy'),
+        settings: any(named: 'settings'),
       ),
     ).thenAnswer((_) async => CompositeResult(
       printBands: [Uint8List.fromList([0x1B, 0x40])],

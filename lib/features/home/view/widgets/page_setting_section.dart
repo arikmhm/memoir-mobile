@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../shared/core/theme/app_colors.dart';
 import '../../../../shared/core/theme/app_spacing.dart';
+import '../../../../shared/widgets/menu_header_card.dart';
 import '../pages/screen_config_page.dart';
 
 class PageSettingSection extends StatelessWidget {
@@ -22,54 +23,11 @@ class PageSettingSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Centered header ──
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.lg,
-          ),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AppColors.border,
-              width: 1,
-            ),
-          ),
-          child: Column(
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: AppColors.brandPrimary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.pages_outlined,
-                  size: 28,
-                  color: AppColors.brandPrimary,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                'Pengaturan Halaman',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                'Atur timing dan pengaturan untuk setiap halaman',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+        const MenuHeaderCard(
+          icon: Icons.pages_outlined,
+          title: 'Pengaturan Halaman',
+          description:
+              'Atur tampilan latar belakang untuk setiap halaman sesi photobooth.',
         ),
         const SizedBox(height: AppSpacing.lg),
 

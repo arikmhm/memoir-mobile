@@ -10,7 +10,7 @@ class PageSettingPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surfaceVariant,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,

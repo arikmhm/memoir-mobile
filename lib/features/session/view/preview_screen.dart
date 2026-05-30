@@ -6,8 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../di.dart';
 import '../../../shared/core/theme/app_colors.dart';
+import '../../../shared/core/widgets/global_session_countdown_bar.dart';
 import '../../../shared/core/widgets/page_background.dart';
-import '../../../shared/core/widgets/session_countdown_bar.dart';
 import '../../../shared/core/theme/app_spacing.dart';
 import '../../../shared/data/datasources/storage_service.dart';
 import '../../../shared/data/models/kiosk_config.dart';
@@ -21,7 +21,7 @@ import '../../app/bloc/app_state.dart';
 /// - Show composite preview (background + elements + photos + overlay)
 /// - "Foto Ulang" → back to photo session (retake all)
 /// - "Lanjut" → proceed to confirmation
-class PreviewScreen extends StatelessWidget {
+class PreviewScreen extends StatefulWidget {
   final String templateId;
   final Map<int, String> capturedPhotos;
 
@@ -31,19 +31,57 @@ class PreviewScreen extends StatelessWidget {
     required this.capturedPhotos,
   });
 
+  @override
+  State<PreviewScreen> createState() => _PreviewScreenState();
+}
+
+class _PreviewScreenState extends State<PreviewScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _entranceController;
+  late final Animation<double> _entranceScale;
+  late final Animation<double> _entranceFade;
+
+  @override
+  void initState() {
+    super.initState();
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 480),
+    );
+    _entranceScale = Tween<double>(begin: 0.92, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _entranceController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    _entranceFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _entranceController,
+        curve: const Interval(0.0, 0.7, curve: Curves.easeOut),
+      ),
+    );
+    _entranceController.forward();
+  }
+
+  @override
+  void dispose() {
+    _entranceController.dispose();
+    super.dispose();
+  }
+
   Template? _findTemplate(BuildContext context) {
     final appState = context.read<AppCubit>().state;
     if (appState is! AppReady) return null;
     final templates = appState.templates.cast<Template>();
     try {
-      return templates.firstWhere((t) => t.id == templateId);
+      return templates.firstWhere((t) => t.id == widget.templateId);
     } catch (_) {
       return null;
     }
   }
 
   void _retake(BuildContext context) {
-    context.go('/photo-session/$templateId');
+    context.go('/photo-session/${widget.templateId}');
   }
 
   void _proceed(BuildContext context) {
@@ -67,7 +105,7 @@ class PreviewScreen extends StatelessWidget {
 
       context.go('/processing', extra: {
         'template': template,
-        'capturedPhotos': Map<int, String>.from(capturedPhotos),
+        'capturedPhotos': Map<int, String>.from(widget.capturedPhotos),
         'paymentMethod': storage.paymentActiveMode,
         'printQty': printQty,
         'hasDigitalCopy': hasDigitalCopy,
@@ -75,8 +113,8 @@ class PreviewScreen extends StatelessWidget {
       });
     } else {
       context.go(
-        '/confirmation/$templateId',
-        extra: Map<int, String>.from(capturedPhotos),
+        '/confirmation/${widget.templateId}',
+        extra: Map<int, String>.from(widget.capturedPhotos),
       );
     }
   }
@@ -123,38 +161,44 @@ class PreviewScreen extends StatelessWidget {
         children: [
           const Positioned.fill(child: PageBackground(pageKey: 'preview')),
           SafeArea(
-        child: Column(
-          children: [
-            // ── Header ──
-            const _PreviewHeader(),
+            child: Column(
+              children: [
+                // ── Header with title + subtitle + timer chip ──
+                const _PreviewHeader(),
 
-            // ── Session countdown ──
-            SessionCountdownBar(
-              perPageTimeout: sl<StorageService>().previewTimeout,
-            ),
-
-            // ── Composite preview ──
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.screenHorizontal,
-                  vertical: AppSpacing.md,
+                // ── Composite preview (animated entrance) ──
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.screenHorizontal,
+                      vertical: AppSpacing.md,
+                    ),
+                    child: AnimatedBuilder(
+                      animation: _entranceController,
+                      builder: (_, child) {
+                        return Opacity(
+                          opacity: _entranceFade.value,
+                          child: Transform.scale(
+                            scale: _entranceScale.value,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: _CompositePreview(
+                        template: template,
+                        capturedPhotos: widget.capturedPhotos,
+                      ),
+                    ),
+                  ),
                 ),
-                child: _CompositePreview(
-                  template: template,
-                  capturedPhotos: capturedPhotos,
-                ),
-              ),
-            ),
 
-            // ── Bottom actions ──
-            Container(height: 1, color: AppColors.border),
-            _BottomActions(
-              onRetake: () => _retake(context),
-              onProceed: () => _proceed(context),
+                // ── Bottom actions (asymmetric hierarchy) ──
+                _BottomActions(
+                  onRetake: () => _retake(context),
+                  onProceed: () => _proceed(context),
+                ),
+              ],
             ),
-          ],
-        ),
           ),
         ],
       ),
@@ -169,22 +213,33 @@ class _PreviewHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.screenHorizontal,
-        AppSpacing.lg,
-        AppSpacing.screenHorizontal,
         AppSpacing.md,
+        AppSpacing.screenHorizontal,
+        AppSpacing.sm,
       ),
-      child: Center(
-        child: Text(
-          'PREVIEW HASIL FOTO',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                letterSpacing: 4,
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
+      child: Row(
+        children: [
+          // Spacer (balance the timer chip on right)
+          const SizedBox(width: 40),
+          // Title (centered)
+          Expanded(
+            child: Center(
+              child: Text(
+                'Preview Foto',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: AppColors.textPrimary,
+                ),
               ),
-        ),
+            ),
+          ),
+          const GlobalSessionCountdownBar(compact: true),
+        ],
       ),
     );
   }
@@ -317,7 +372,7 @@ class _CompositePreview extends StatelessWidget {
   }
 }
 
-// ─── Bottom Actions ─────────────────────────────────────────────
+// ─── Bottom Actions (asymmetric hierarchy) ─────────────────────
 
 class _BottomActions extends StatelessWidget {
   final VoidCallback onRetake;
@@ -331,56 +386,144 @@ class _BottomActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.screenHorizontal,
-        vertical: AppSpacing.md,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenHorizontal,
+        AppSpacing.md,
+        AppSpacing.screenHorizontal,
+        AppSpacing.xxl,
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: SizedBox(
-              height: AppSpacing.touchTarget,
-              child: OutlinedButton(
-                onPressed: onRetake,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.textPrimary,
-                  side: const BorderSide(color: AppColors.border),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 2,
-                  ),
-                ),
-                child: const Text('FOTO ULANG'),
-              ),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: SizedBox(
-              height: AppSpacing.touchTarget,
-              child: FilledButton(
-                onPressed: onProceed,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.brandPrimary,
-                  foregroundColor: AppColors.brandAccent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 2,
-                  ),
-                ),
-                child: const Text('LANJUTKAN'),
-              ),
-            ),
-          ),
+          // Primary action: Lanjutkan
+          _PrimaryButton(onPressed: onProceed),
+          const SizedBox(height: AppSpacing.sm),
+          // Secondary action: Foto Ulang (text style)
+          _SecondaryButton(onPressed: onRetake),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Primary Button (modern pill, dominant) ────────────────────
+
+class _PrimaryButton extends StatefulWidget {
+  final VoidCallback onPressed;
+
+  const _PrimaryButton({required this.onPressed});
+
+  @override
+  State<_PrimaryButton> createState() => _PrimaryButtonState();
+}
+
+class _PrimaryButtonState extends State<_PrimaryButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onPressed();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          height: 60,
+          decoration: BoxDecoration(
+            color: AppColors.brandPrimary,
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Lanjutkan',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: 0.8,
+                    ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.arrow_forward_rounded,
+                size: 22,
+                color: Colors.white,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Secondary Button (text/ghost style, secondary action) ─────
+
+class _SecondaryButton extends StatefulWidget {
+  final VoidCallback onPressed;
+
+  const _SecondaryButton({required this.onPressed});
+
+  @override
+  State<_SecondaryButton> createState() => _SecondaryButtonState();
+}
+
+class _SecondaryButtonState extends State<_SecondaryButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onPressed();
+      },
+      child: AnimatedOpacity(
+        opacity: _pressed ? 0.55 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.refresh_rounded,
+                size: 18,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Foto Ulang',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                      letterSpacing: 0.3,
+                    ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

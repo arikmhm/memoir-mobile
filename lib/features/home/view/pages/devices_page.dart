@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../di.dart';
 import '../../../../shared/core/theme/app_colors.dart';
 import '../../../../shared/core/theme/app_spacing.dart';
+import '../../../../shared/widgets/menu_header_card.dart';
 import '../../bloc/home_cubit.dart';
 import '../widgets/devices_section.dart';
 
@@ -15,7 +16,7 @@ class DevicesPage extends StatelessWidget {
     return BlocProvider(
       create: (_) => sl<HomeCubit>(),
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surfaceVariant,
         appBar: AppBar(
           elevation: 0,
           backgroundColor: Colors.transparent,
@@ -46,7 +47,19 @@ class DevicesPage extends StatelessWidget {
             horizontal: AppSpacing.screenHorizontal,
             vertical: AppSpacing.md,
           ),
-          child: DevicesSection(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              MenuHeaderCard(
+                icon: Icons.devices_outlined,
+                title: 'Perangkat',
+                description:
+                    'Konfigurasi koneksi kamera dan printer thermal.',
+              ),
+              SizedBox(height: AppSpacing.lg),
+              DevicesSection(),
+            ],
+          ),
         ),
       ),
     );

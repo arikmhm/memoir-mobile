@@ -7,7 +7,6 @@ import '../../../../shared/core/theme/app_colors.dart';
 import '../../../../shared/core/theme/app_spacing.dart';
 import '../../../../shared/data/models/template.dart';
 import '../../../../shared/widgets/memoir_banner.dart';
-import '../../../../shared/widgets/memoir_button.dart';
 import '../../../app/bloc/app_cubit.dart';
 import '../../../app/bloc/app_state.dart';
 import '../../bloc/home_cubit.dart';
@@ -60,70 +59,92 @@ class _TemplateListSectionState extends State<TemplateListSection> {
           _showBanner(state.message, MemoirBannerType.error);
         }
       },
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Inline banner ──
-              if (_bannerMessage != null) ...[
-                MemoirBanner(
-                  message: _bannerMessage!,
-                  type: _bannerType ?? MemoirBannerType.info,
-                  onDismiss: _dismissBanner,
-                ),
-                const SizedBox(height: AppSpacing.md),
-              ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Inline banner ──
+          if (_bannerMessage != null) ...[
+            MemoirBanner(
+              message: _bannerMessage!,
+              type: _bannerType ?? MemoirBannerType.info,
+              onDismiss: _dismissBanner,
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
 
-              // ── Sync button ──
-              BlocBuilder<HomeCubit, HomeState>(
-                buildWhen: (_, current) =>
-                    current is HomeInitial ||
-                    current is TemplateSyncInProgress ||
-                    current is TemplateSyncSuccess ||
-                    current is TemplateSyncError,
-                builder: (context, state) {
-                  final isSyncing = state is TemplateSyncInProgress;
-                  return MemoirButton.filled(
-                    label: isSyncing ? 'Sinkronisasi...' : 'Sinkronisasi Template',
-                    icon: isSyncing ? null : Icons.sync,
-                    isLoading: isSyncing,
-                    onPressed:
-                        isSyncing ? null : context.read<HomeCubit>().syncTemplates,
-                  );
-                },
-              ),
-              const SizedBox(height: AppSpacing.md),
-
-              // ── Template count ──
-              Text(
-                'TEMPLATE (${templates.length})',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
-                  letterSpacing: 1.0,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-
-              // ── Template grid (2 columns) ──
-              if (templates.isEmpty)
-                const _EmptyState()
-              else
-                Wrap(
-                  spacing: AppSpacing.sm,
-                  runSpacing: AppSpacing.sm,
-                  children: templates.map(
-                    (t) => SizedBox(
-                      width: (constraints.maxWidth - AppSpacing.sm) / 2,
-                      child: _TemplateCard(template: t),
+          // ── Wrapped white card: header + grid ──
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border, width: 1),
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.md,
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Template count + Sync button (inline) ──
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'TEMPLATE (${templates.length})',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ),
+                        BlocBuilder<HomeCubit, HomeState>(
+                          buildWhen: (_, current) =>
+                              current is HomeInitial ||
+                              current is TemplateSyncInProgress ||
+                              current is TemplateSyncSuccess ||
+                              current is TemplateSyncError,
+                          builder: (context, state) {
+                            final isSyncing = state is TemplateSyncInProgress;
+                            return _SyncButton(
+                              isSyncing: isSyncing,
+                              onPressed: isSyncing
+                                  ? null
+                                  : context.read<HomeCubit>().syncTemplates,
+                            );
+                          },
+                        ),
+                      ],
                     ),
-                  ).toList(),
-                ),
-            ],
-          );
-        },
+                    const SizedBox(height: AppSpacing.md),
+
+                    // ── Template grid (2 columns) ──
+                    if (templates.isEmpty)
+                      const _EmptyState()
+                    else
+                      Wrap(
+                        spacing: AppSpacing.sm,
+                        runSpacing: AppSpacing.sm,
+                        children: templates.map(
+                          (t) => SizedBox(
+                            width:
+                                (constraints.maxWidth - AppSpacing.sm) / 2,
+                            child: _TemplateCard(template: t),
+                          ),
+                        ).toList(),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -455,6 +476,110 @@ class _InfoChip extends StatelessWidget {
           fontWeight: FontWeight.w500,
           color: AppColors.textSecondary,
           letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Sync button (modern pill style with rotating icon) ────────
+
+class _SyncButton extends StatefulWidget {
+  final bool isSyncing;
+  final VoidCallback? onPressed;
+
+  const _SyncButton({required this.isSyncing, this.onPressed});
+
+  @override
+  State<_SyncButton> createState() => _SyncButtonState();
+}
+
+class _SyncButtonState extends State<_SyncButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _rotate;
+  bool _pressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _rotate = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+    if (widget.isSyncing) _rotate.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SyncButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isSyncing && !_rotate.isAnimating) {
+      _rotate.repeat();
+    } else if (!widget.isSyncing && _rotate.isAnimating) {
+      _rotate.stop();
+      _rotate.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _rotate.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onPressed != null && !widget.isSyncing;
+    final label = widget.isSyncing ? 'Menyinkronkan' : 'Sinkronisasi';
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: enabled
+          ? (_) {
+              setState(() => _pressed = false);
+              widget.onPressed?.call();
+            }
+          : null,
+      child: AnimatedScale(
+        scale: _pressed ? 0.96 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: widget.isSyncing
+                ? AppColors.surfaceVariant
+                : AppColors.brandPrimary,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              RotationTransition(
+                turns: _rotate,
+                child: Icon(
+                  Icons.sync,
+                  size: 16,
+                  color: widget.isSyncing
+                      ? AppColors.textSecondary
+                      : Colors.white,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.3,
+                  color: widget.isSyncing
+                      ? AppColors.textSecondary
+                      : Colors.white,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

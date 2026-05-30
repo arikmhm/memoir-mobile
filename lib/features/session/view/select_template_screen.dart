@@ -5,8 +5,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../di.dart';
 import '../../../shared/core/theme/app_colors.dart';
+import '../../../shared/core/widgets/global_session_countdown_bar.dart';
 import '../../../shared/core/widgets/page_background.dart';
-import '../../../shared/core/widgets/session_countdown_bar.dart';
 import '../../../shared/core/theme/app_spacing.dart';
 import '../../../shared/data/datasources/storage_service.dart';
 import '../../../shared/data/models/template.dart';
@@ -28,10 +28,14 @@ class SelectTemplateScreen extends StatefulWidget {
 
 class _SelectTemplateScreenState extends State<SelectTemplateScreen> {
   int _selectedIndex = 0;
+
   @override
   void initState() {
     super.initState();
-    sl<StorageService>().startSessionTimer();
+    final storage = sl<StorageService>();
+    if (!storage.hasActiveSession) {
+      storage.startSessionTimer();
+    }
   }
 
   @override
@@ -61,73 +65,48 @@ class _SelectTemplateScreenState extends State<SelectTemplateScreen> {
         children: [
           const Positioned.fill(child: PageBackground(pageKey: 'selectTemplate')),
           SafeArea(
-        child: Column(
-          children: [
-            // ── Header ──
-            const _Header(),
+            child: Column(
+              children: [
+                // ── Header with title + compact countdown ──
+                const _Header(),
 
-            // ── Session countdown ──
-            SessionCountdownBar(
-              perPageTimeout: sl<StorageService>().selectTemplateTimeout,
-            ),
-
-            // ── Main preview (2/3 of available space) ──
-            Expanded(
-              flex: 3,
-              child: GestureDetector(
-                onTap: () => context.go('/photo-session/${selected.id}'),
-                child: _LargePreview(template: selected),
-              ),
-            ),
-
-            // ── Template info ──
-            _TemplateInfo(
-              templateName: selected.name,
-              photoSlotCount: selected.photoSlotCount,
-            ),
-
-            Container(height: 1, color: AppColors.border),
-
-            // ── Thumbnail strip (1/3 of available space) ──
-            Expanded(
-              flex: 1,
-              child: _ThumbnailStrip(
-                templates: templates,
-                selectedIndex: _selectedIndex,
-                onSelect: (i) => setState(() => _selectedIndex = i),
-              ),
-            ),
-
-            // ── Confirm button ──
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.screenHorizontal,
-              ),
-              child: SizedBox(
-                width: double.infinity,
-                height: AppSpacing.touchTarget,
-                child: FilledButton(
-                  onPressed: () =>
-                      context.go('/photo-session/${selected.id}'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.brandPrimary,
-                    foregroundColor: AppColors.brandAccent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 2,
-                    ),
-                  ),
-                  child: const Text('GUNAKAN TEMPLATE'),
+                // ── Main preview (no longer tappable) ──
+                Expanded(
+                  flex: 3,
+                  child: _LargePreview(template: selected),
                 ),
-              ),
+
+                // ── Template info ──
+                _TemplateInfo(
+                  templateName: selected.name,
+                  photoSlotCount: selected.photoSlotCount,
+                ),
+
+                // ── Thumbnail strip ──
+                Expanded(
+                  flex: 1,
+                  child: _ThumbnailStrip(
+                    templates: templates,
+                    selectedIndex: _selectedIndex,
+                    onSelect: (i) => setState(() => _selectedIndex = i),
+                  ),
+                ),
+
+                // ── Modern CTA button ──
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.screenHorizontal,
+                    AppSpacing.md,
+                    AppSpacing.screenHorizontal,
+                    AppSpacing.xxl,
+                  ),
+                  child: _UseTemplateButton(
+                    onPressed: () =>
+                        context.go('/photo-session/${selected.id}'),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: AppSpacing.md),
-          ],
-        ),
           ),
         ],
       ),
@@ -179,15 +158,22 @@ class _Header extends StatelessWidget {
         AppSpacing.screenHorizontal,
         AppSpacing.md,
       ),
-      child: Center(
-        child: Text(
-          'PILIH TEMPLATE',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                letterSpacing: 4,
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-        ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Text(
+            'Pilih Template Foto',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  letterSpacing: 0.5,
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const Align(
+            alignment: Alignment.centerRight,
+            child: GlobalSessionCountdownBar(compact: true),
+          ),
+        ],
       ),
     );
   }
@@ -213,6 +199,7 @@ class _TemplateInfo extends StatelessWidget {
         vertical: AppSpacing.sm,
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
             templateName,
@@ -405,50 +392,37 @@ class _Thumbnail extends StatelessWidget {
 
         return GestureDetector(
           onTap: onTap,
-          child: AnimatedContainer(
+          child: AnimatedScale(
+            scale: isSelected ? 1.0 : 0.92,
             duration: const Duration(milliseconds: 200),
-            width: thumbWidth.clamp(96, 280),
-            height: thumbHeight,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: isSelected ? AppColors.brandPrimary : AppColors.border,
-            width: isSelected ? 2.0 : 1.0,
-          ),
-          color: AppColors.surfaceContainer,
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            _buildThumbBackground(),
-            // Selected overlay label
-            if (isSelected)
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  color: AppColors.brandPrimary.withAlpha(180),
-                  child: Text(
-                    template.name,
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.3,
-                      color: AppColors.brandAccent,
-                    ),
+            curve: Curves.easeOut,
+            child: AnimatedOpacity(
+              opacity: isSelected ? 1.0 : 0.6,
+              duration: const Duration(milliseconds: 200),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: thumbWidth.clamp(96, 280),
+                height: thumbHeight,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.zero,
+                  border: Border.all(
+                    color:
+                        isSelected ? AppColors.brandPrimary : AppColors.border,
+                    width: isSelected ? 2.5 : 1.0,
                   ),
+                  color: AppColors.surfaceContainer,
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _buildThumbBackground(),
+                  ],
                 ),
               ),
-          ],
-        ),
-      ),
-    );
+            ),
+          ),
+        );
       },
     );
   }
@@ -631,3 +605,70 @@ class _GenericElement extends StatelessWidget {
     );
   }
 }
+
+// ─── Use Template CTA (modern pill button) ──────────────────────
+
+class _UseTemplateButton extends StatefulWidget {
+  final VoidCallback onPressed;
+
+  const _UseTemplateButton({required this.onPressed});
+
+  @override
+  State<_UseTemplateButton> createState() => _UseTemplateButtonState();
+}
+
+class _UseTemplateButtonState extends State<_UseTemplateButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onPressed();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          height: 60,
+          decoration: BoxDecoration(
+            color: AppColors.brandPrimary,
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.play_arrow_rounded,
+                size: 24,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Gunakan Template',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: 0.8,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+

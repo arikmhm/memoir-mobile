@@ -6,12 +6,8 @@ import '../../../../shared/core/theme/app_spacing.dart';
 import '../../../../shared/data/datasources/storage_service.dart';
 import '../widgets/screen_configs/booth_settings_section.dart';
 import '../widgets/screen_configs/page_bg_section.dart';
-import '../widgets/screen_configs/photo_session_settings_section.dart';
-import '../widgets/screen_configs/preview_timeout_section.dart';
 import '../widgets/screen_configs/processing_settings_section.dart';
 import '../widgets/screen_configs/screensaver_config_section.dart';
-import '../widgets/screen_configs/select_template_timeout_section.dart';
-import '../widgets/screen_configs/thank_you_settings_section.dart';
 
 class ScreenConfigPage extends StatelessWidget {
   final String screenLabel;
@@ -23,12 +19,14 @@ class ScreenConfigPage extends StatelessWidget {
     super.key,
   });
 
-  Widget _withBg(String pageKey, Widget topSection) {
+  Widget _withBg(String pageKey, Widget? topSection) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        topSection,
-        const SizedBox(height: AppSpacing.md),
+        if (topSection != null) ...[
+          topSection,
+          const SizedBox(height: AppSpacing.md),
+        ],
         PageBgSection(
           storageService: sl<StorageService>(),
           pageKey: pageKey,
@@ -42,17 +40,17 @@ class ScreenConfigPage extends StatelessWidget {
       case 'screensaver':
         return ScreensaverConfigSection(storageService: sl<StorageService>());
       case 'select-template':
-        return _withBg('selectTemplate', SelectTemplateTimeoutSection(storageService: sl<StorageService>()));
+        return _withBg('selectTemplate', null);
       case 'photo-session':
-        return _withBg('photoSession', PhotoSessionSettingsSection(storageService: sl<StorageService>()));
+        return _withBg('photoSession', null);
       case 'preview':
-        return _withBg('preview', PreviewTimeoutSection(storageService: sl<StorageService>()));
+        return _withBg('preview', null);
       case 'confirmation':
         return _withBg('confirmation', BoothSettingsSection(storageService: sl<StorageService>()));
       case 'processing':
         return _withBg('processing', ProcessingSettingsSection(storageService: sl<StorageService>()));
       case 'thank-you':
-        return _withBg('thankYou', ThankYouSettingsSection(storageService: sl<StorageService>()));
+        return _withBg('thankYou', null);
       default:
         return Center(child: Text('$screenLabel configuration coming soon'));
     }

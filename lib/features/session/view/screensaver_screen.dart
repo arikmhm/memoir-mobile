@@ -129,39 +129,6 @@ class _ScreensaverScreenState extends State<ScreensaverScreen>
             ),
           ),
 
-          // ── Pulsing CTA overlay (for image/video modes) ──
-          if (_type == 'image' || _type == 'video')
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 80,
-              child: IgnorePointer(
-                child: Center(
-                  child: FadeTransition(
-                    opacity: _pulseAnimation,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.md,
-                        vertical: AppSpacing.sm,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: const Text(
-                        'TAP UNTUK MULAI',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          letterSpacing: 3,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
 
           // ── Hidden access zone ──
           Positioned(

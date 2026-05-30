@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:equatable/equatable.dart';
 
 import '../../../shared/data/services/print_channel.dart';
@@ -127,6 +129,64 @@ final class TemplateSyncError extends HomeState {
   final String message;
 
   const TemplateSyncError({required this.message});
+
+  @override
+  List<Object?> get props => [message];
+}
+
+// ─── Image Processing Test States ─────────────────────────────────
+
+/// Initializing camera for image-processing live tuning.
+final class ImageProcessingInitializing extends HomeState {
+  const ImageProcessingInitializing();
+}
+
+/// Camera initialized and waiting for the user to capture a photo.
+final class ImageProcessingCameraReady extends HomeState {
+  const ImageProcessingCameraReady();
+}
+
+/// Capturing a still from the camera.
+final class ImageProcessingCapturing extends HomeState {
+  const ImageProcessingCapturing();
+}
+
+/// Re-rendering preview with the latest settings.
+///
+/// [previousBytes] is the prior render kept on screen while the new
+/// one cooks — avoids a blank flash between renders.
+final class ImageProcessingPreviewRendering extends HomeState {
+  final String photoPath;
+  final Uint8List? previousBytes;
+
+  const ImageProcessingPreviewRendering({
+    required this.photoPath,
+    this.previousBytes,
+  });
+
+  @override
+  List<Object?> get props => [photoPath, previousBytes];
+}
+
+/// Preview render complete — B&W PNG bytes ready to display.
+final class ImageProcessingPreviewReady extends HomeState {
+  final String photoPath;
+  final Uint8List previewBytes;
+
+  const ImageProcessingPreviewReady({
+    required this.photoPath,
+    required this.previewBytes,
+  });
+
+  @override
+  List<Object?> get props => [photoPath, previewBytes];
+}
+
+/// Error during image-processing test (camera init, capture, or render).
+final class ImageProcessingError extends HomeState {
+  final String message;
+
+  const ImageProcessingError({required this.message});
 
   @override
   List<Object?> get props => [message];

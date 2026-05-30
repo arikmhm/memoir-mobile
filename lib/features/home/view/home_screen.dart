@@ -9,9 +9,11 @@ import '../../../shared/data/datasources/storage_service.dart';
 import '../../../shared/data/models/kiosk_config.dart';
 import 'pages/booth_mode_page.dart';
 import 'pages/devices_page.dart';
+import 'pages/image_processing_page.dart';
 import 'pages/page_setting_page.dart';
 import 'pages/payment_page.dart';
 import 'pages/template_page.dart';
+import 'pages/timer_settings_page.dart';
 import 'widgets/template_list_section.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -24,19 +26,23 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   static const _tabs = [
     _TabDef(icon: Icons.dashboard_outlined, label: 'Template'),
-    _TabDef(icon: Icons.tune_outlined, label: 'Mode Booth'),
     _TabDef(icon: Icons.display_settings_outlined, label: 'Page Setting'),
-    _TabDef(icon: Icons.devices_outlined, label: 'Perangkat'),
+    _TabDef(icon: Icons.tune_outlined, label: 'Mode Booth'),
+    _TabDef(icon: Icons.timer_outlined, label: 'Timer'),
     _TabDef(icon: Icons.payment_outlined, label: 'Pembayaran'),
+    _TabDef(icon: Icons.devices_outlined, label: 'Perangkat'),
+    _TabDef(icon: Icons.image_outlined, label: 'Pemrosesan Gambar'),
   ];
 
   void _navigateToMenu(int index) {
     final page = switch (index) {
       0 => const TemplatePage(),
-      1 => const BoothModePage(),
-      2 => const PageSettingPage(),
-      3 => const DevicesPage(),
+      1 => const PageSettingPage(),
+      2 => const BoothModePage(),
+      3 => const TimerSettingsPage(),
       4 => const PaymentPage(),
+      5 => const DevicesPage(),
+      6 => const ImageProcessingPage(),
       _ => null,
     };
     if (page == null) return;
@@ -46,13 +52,13 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surfaceVariant,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Brand top bar ──
           Container(
-            decoration: const BoxDecoration(color: Colors.white),
+            decoration: const BoxDecoration(color: AppColors.surfaceVariant),
             padding: EdgeInsets.fromLTRB(
               AppSpacing.screenHorizontal,
               MediaQuery.of(context).padding.top + AppSpacing.screenVertical,
@@ -75,9 +81,11 @@ class _HomeScreenState extends State<HomeScreen> {
           // ── Menu Cards Grid & Content area ──
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.screenHorizontal,
-                vertical: AppSpacing.md,
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.screenHorizontal,
+                AppSpacing.md,
+                AppSpacing.screenHorizontal,
+                AppSpacing.md + 120 + MediaQuery.of(context).padding.bottom,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -100,12 +108,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         vertical: AppSpacing.md,
                       ),
                       child: GridView.builder(
-                        gridDelegate:
-                            const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 90,
-                          mainAxisSpacing: AppSpacing.md,
-                          crossAxisSpacing: AppSpacing.md,
-                          childAspectRatio: 0.85,
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 5,
+                          mainAxisSpacing: AppSpacing.sm,
+                          crossAxisSpacing: AppSpacing.sm,
+                          childAspectRatio: 1.0,
                         ),
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
@@ -138,40 +145,15 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-
-          // ── Start Booth Button (sticky) ──
-          Container(
-            decoration: const BoxDecoration(color: Colors.white),
-            padding: EdgeInsets.fromLTRB(
-              AppSpacing.screenHorizontal,
-              AppSpacing.screenVertical,
-              AppSpacing.screenHorizontal,
-              AppSpacing.screenVertical + MediaQuery.of(context).padding.bottom,
-            ),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => context.go('/screensaver'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.textPrimary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: Text(
-                  'Start Booth',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 32, right: 12),
+        child: _StartBoothButton(
+          onPressed: () => context.go('/screensaver'),
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }
@@ -321,8 +303,8 @@ class _MenuCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.start,
+      mainAxisSize: MainAxisSize.max,
       children: [
         GestureDetector(
           onTap: onTap,
@@ -353,6 +335,73 @@ class _MenuCard extends StatelessWidget {
               ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Start Booth Button (modern CTA) ────────────────────────────
+
+class _StartBoothButton extends StatefulWidget {
+  final VoidCallback onPressed;
+
+  const _StartBoothButton({required this.onPressed});
+
+  @override
+  State<_StartBoothButton> createState() => _StartBoothButtonState();
+}
+
+class _StartBoothButtonState extends State<_StartBoothButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onPressed();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? 0.96 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 22),
+          decoration: BoxDecoration(
+            color: AppColors.brandPrimary,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.play_arrow_rounded,
+                size: 22,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Start Booth',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: 0.8,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
