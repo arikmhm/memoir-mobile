@@ -282,6 +282,9 @@ class ProcessingCubit extends Cubit<ProcessingState> {
           dither: DitherAlgorithm.fromKey(_storageService.ditherAlgorithm),
           sharpenAmount: _storageService.sharpenAmount,
           brightness: _storageService.brightness,
+          printWidth: _storageService.printWidth,
+          cutMode: CutMode.fromKey(_storageService.cutMode),
+          feedLines: _storageService.feedLines,
         ),
       );
 
@@ -301,6 +304,8 @@ class ProcessingCubit extends Cubit<ProcessingState> {
                 : base;
             _softfileQrBytes = await _printService.buildSoftfileQrBand(
               '$trimmed/${transaction.id}',
+              cutMode: CutMode.fromKey(_storageService.cutMode),
+              feedLines: _storageService.feedLines,
             );
           }
         }

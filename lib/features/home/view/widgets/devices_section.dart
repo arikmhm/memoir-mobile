@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../shared/core/theme/app_spacing.dart';
 import 'camera_test_section.dart';
+import 'printer_config_section.dart';
 import 'printer_test_section.dart';
 
 class DevicesSection extends StatelessWidget {
@@ -14,6 +15,8 @@ class DevicesSection extends StatelessWidget {
         CameraTestSection(),
         SizedBox(height: AppSpacing.md),
         PrinterTestSection(),
+        SizedBox(height: AppSpacing.md),
+        PrinterConfigSection(),
       ],
     );
   }

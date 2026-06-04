@@ -21,7 +21,7 @@ class NativeUsbChannel implements PrintChannel {
   Future<bool> connect(String address) async {
     final result = await _channel.invokeMethod<bool>(
       'connect',
-      {'deviceId': address},
+      {'vendorProductId': address},
     );
     return result ?? false;
   }

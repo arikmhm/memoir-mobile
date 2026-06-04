@@ -218,7 +218,7 @@ class StorageService {
   static const _receiptPrintEnabledKey = 'processing.receiptPrintEnabled';
 
   bool get isReceiptPrintEnabled =>
-      _prefs.getBool(_receiptPrintEnabledKey) ?? true;
+      _prefs.getBool(_receiptPrintEnabledKey) ?? false;
 
   Future<void> setReceiptPrintEnabled(bool enabled) =>
       _prefs.setBool(_receiptPrintEnabledKey, enabled);
@@ -254,12 +254,38 @@ class StorageService {
 
   /// Reset image-processing tuning to defaults (density 2, FS, sharpen 0.25,
   /// brightness +8). Clears overrides so getters fall back to `??` defaults.
+  ///
+  /// Printer mechanics (paper width, cut mode, feed) are intentionally left
+  /// untouched — they describe the hardware, not the image tuning.
   Future<void> resetImageProcessingSettings() async {
     await _prefs.remove(_thermalDensityKey);
     await _prefs.remove(_ditherAlgorithmKey);
     await _prefs.remove(_sharpenAmountKey);
     await _prefs.remove(_brightnessKey);
   }
+
+  // ─── Printer Mechanics ───────────────────────────────────────
+  // Paper width, cut behavior, and feed — distinct from the image-processing
+  // tuning above; these control the physical ESC/POS output.
+
+  static const _printWidthKey = 'processing.printWidth';
+  static const _cutModeKey = 'processing.cutMode';
+  static const _feedLinesKey = 'processing.feedLines';
+
+  /// Target print width in printer dots (e.g. 384/512/576). Default 576.
+  int get printWidth => _prefs.getInt(_printWidthKey) ?? 576;
+  Future<void> setPrintWidth(int dots) =>
+      _prefs.setInt(_printWidthKey, dots);
+
+  /// Cut mode key: 'none', 'partial', or 'full'. Default 'full'.
+  String get cutMode => _prefs.getString(_cutModeKey) ?? 'full';
+  Future<void> setCutMode(String mode) =>
+      _prefs.setString(_cutModeKey, mode);
+
+  /// Lines fed before the cut, 0..15. Default 3.
+  int get feedLines => _prefs.getInt(_feedLinesKey) ?? 3;
+  Future<void> setFeedLines(int lines) =>
+      _prefs.setInt(_feedLinesKey, lines.clamp(0, 15));
 
   // ─── Confirmation Settings ──────────────────────────────────
 

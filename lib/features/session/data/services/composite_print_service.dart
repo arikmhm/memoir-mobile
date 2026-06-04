@@ -9,6 +9,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../../shared/core/utils/formatters.dart';
 import '../../../../shared/data/services/print_channel.dart';
+import 'composite_render_service.dart' show CutMode;
 
 /// Service for printing composite images via thermal printer.
 ///
@@ -78,10 +79,10 @@ class CompositePrintService {
 
     final connected = await _channel!.connect(printerAddress);
     if (!connected) {
-      throw PrintException(
-        'Gagal terhubung ke printer "$printerName". '
-        'Pastikan printer menyala dan terhubung.',
-      );
+      final hint = connectionType == PrinterConnectionType.usb
+          ? 'Pastikan kabel OTG terpasang dengan benar.'
+          : 'Pastikan printer menyala dan berada dalam jangkauan Bluetooth.';
+      throw PrintException('Koneksi ke printer gagal. $hint');
     }
   }
 
@@ -102,7 +103,7 @@ class CompositePrintService {
       if (!success) {
         throw const PrintException(
           'Gagal mengirim data ke printer. '
-          'Pastikan printer menyala dan kertas tersedia.',
+          'Periksa kertas dan pastikan printer menyala.',
         );
       }
     }
@@ -154,8 +155,14 @@ class CompositePrintService {
   /// Build ESC/POS bytes for a softfile QR band appended after the photo image.
   ///
   /// Printed when [hasDigitalCopy] is true: "Scan Here" label + QR code + cut.
-  /// The photo bands are encoded without a cut so this band terminates the strip.
-  Future<Uint8List> buildSoftfileQrBand(String previewUrl) async {
+  /// The photo bands are encoded without a cut so this band terminates the
+  /// strip — [cutMode] and [feedLines] mirror the photo-band tail settings so
+  /// the strip ends consistently regardless of whether a QR is appended.
+  Future<Uint8List> buildSoftfileQrBand(
+    String previewUrl, {
+    CutMode cutMode = CutMode.full,
+    int feedLines = 3,
+  }) async {
     final profile = await CapabilityProfile.load();
     final generator = Generator(PaperSize.mm80, profile);
     final bytes = <int>[];
@@ -173,9 +180,17 @@ class CompositePrintService {
     final qrImg = await _renderQrAsImage(previewUrl, sizePixels: 160);
     bytes.addAll(generator.imageRaster(qrImg, align: PosAlign.center));
 
-    // ESC 2 — restore default line spacing before cut.
+    // ESC 2 — restore default line spacing before feed/cut.
     bytes.addAll(generator.rawBytes([0x1B, 0x32]));
-    bytes.addAll(generator.cut());
+    if (feedLines > 0) bytes.addAll(generator.feed(feedLines.clamp(0, 15)));
+    switch (cutMode) {
+      case CutMode.full:
+        bytes.addAll(generator.cut());
+      case CutMode.partial:
+        bytes.addAll(generator.cut(mode: PosCutMode.partial));
+      case CutMode.none:
+        break;
+    }
 
     return Uint8List.fromList(bytes);
   }

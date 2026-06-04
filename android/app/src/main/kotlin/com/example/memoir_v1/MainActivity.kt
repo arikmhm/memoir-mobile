@@ -2,11 +2,14 @@ package com.example.memoir_v1
 
 import android.app.PendingIntent
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothClass
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
@@ -46,6 +49,11 @@ class MainActivity : FlutterActivity() {
     private var bluetoothSocket: BluetoothSocket? = null
     private var outputStream: OutputStream? = null
 
+    // ── Bluetooth discovery state ──
+    private val discoveredPrinters = mutableListOf<Map<String, String>>()
+    private var discoveryResult: MethodChannel.Result? = null
+    private var discoveryReceiver: BroadcastReceiver? = null
+
     // ── USB state ──
     private var usbConnection: UsbDeviceConnection? = null
     private var usbInterface: UsbInterface? = null
@@ -76,6 +84,12 @@ class MainActivity : FlutterActivity() {
                     }
                     "disconnect" -> disconnectPrinter(result)
                     "pairedDevices" -> bluetoothPairedDevices(result)
+                    "discoverPrinters" -> bluetoothDiscoverPrinters(result)
+                    "quickPing" -> {
+                        val mac = call.argument<String>("mac")
+                        if (mac == null) result.success(false)
+                        else bluetoothQuickPing(mac, result)
+                    }
                     "isEnabled" -> bluetoothIsEnabled(result)
                     else -> result.notImplemented()
                 }
@@ -88,11 +102,11 @@ class MainActivity : FlutterActivity() {
                     "listDevices" -> usbListDevices(result)
                     "listAllDevices" -> usbListAllDevices(result)
                     "connect" -> {
-                        val deviceId = call.argument<String>("deviceId")
-                        if (deviceId == null) {
+                        val vendorProductId = call.argument<String>("vendorProductId")
+                        if (vendorProductId == null) {
                             result.success(false)
                         } else {
-                            usbConnect(deviceId, result)
+                            usbConnect(vendorProductId, result)
                         }
                     }
                     "write" -> {
@@ -194,18 +208,153 @@ class MainActivity : FlutterActivity() {
         bluetoothSocket = null
     }
 
-    /** Return all Bluetooth devices currently paired in Android settings. */
+    /**
+     * Return Bluetooth devices paired in Android settings that are likely
+     * printers — filtered to IMAGING major class (thermal printers, label
+     * printers, POS printers all register as IMAGING = 0x0600).
+     *
+     * Excluding phones, headsets, speakers etc. prevents false positives
+     * where a non-printer device accepts RFCOMM connections and passes
+     * the validation step.
+     *
+     * Devices with UNCATEGORIZED major class (0x0000) are also included
+     * as a fallback for cheap printers that don't set their class properly.
+     */
     @Suppress("MissingPermission")
     private fun bluetoothPairedDevices(result: MethodChannel.Result) {
         try {
             val adapter = BluetoothAdapter.getDefaultAdapter()
-            val devices = adapter?.bondedDevices?.map { device ->
-                mapOf("name" to (device.name ?: "Unknown"), "mac" to device.address)
-            } ?: emptyList()
+            val devices = adapter?.bondedDevices
+                ?.filter { device ->
+                    val major = device.bluetoothClass?.majorDeviceClass
+                    major == BluetoothClass.Device.Major.IMAGING ||
+                    major == BluetoothClass.Device.Major.UNCATEGORIZED
+                }
+                ?.map { device ->
+                    mapOf("name" to (device.name ?: "Unknown"), "mac" to device.address)
+                } ?: emptyList()
             result.success(devices)
         } catch (e: Exception) {
             result.success(emptyList<Any>())
         }
+    }
+
+    /**
+     * Real Bluetooth discovery — broadcasts inquiry and collects devices
+     * that are actively responding (~12 s). Only returns IMAGING and
+     * UNCATEGORIZED class devices (thermal printers).
+     *
+     * Unlike pairedDevices() this only shows printers that are physically
+     * on and in range — not stale bonded entries.
+     */
+    @Suppress("MissingPermission")
+    private fun bluetoothDiscoverPrinters(result: MethodChannel.Result) {
+        val adapter = BluetoothAdapter.getDefaultAdapter()
+        if (adapter == null || !adapter.isEnabled) {
+            result.success(emptyList<Any>())
+            return
+        }
+
+        // Cancel any ongoing discovery and clean up stale state.
+        if (adapter.isDiscovering) adapter.cancelDiscovery()
+        discoveryReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+            discoveryReceiver = null
+        }
+        discoveredPrinters.clear()
+        discoveryResult = result
+
+        discoveryReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                when (intent.action) {
+                    BluetoothDevice.ACTION_FOUND -> {
+                        @Suppress("DEPRECATION")
+                        val device: BluetoothDevice? =
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                intent.getParcelableExtra(
+                                    BluetoothDevice.EXTRA_DEVICE,
+                                    BluetoothDevice::class.java,
+                                )
+                            } else {
+                                intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                            }
+                        device?.let { d ->
+                            val major = d.bluetoothClass?.majorDeviceClass
+                            if (major == BluetoothClass.Device.Major.IMAGING ||
+                                major == BluetoothClass.Device.Major.UNCATEGORIZED
+                            ) {
+                                val mac = d.address
+                                if (discoveredPrinters.none { it["mac"] == mac }) {
+                                    discoveredPrinters.add(
+                                        mapOf("name" to (d.name ?: "Unknown"), "mac" to mac)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
+                        unregisterReceiver(this)
+                        discoveryReceiver = null
+                        runOnUiThread {
+                            discoveryResult?.success(discoveredPrinters.toList())
+                            discoveryResult = null
+                        }
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_FOUND)
+            addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
+        }
+        registerReceiver(discoveryReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        adapter.startDiscovery()
+    }
+
+    /**
+     * Quick BT reachability check with a hard 5-second timeout.
+     *
+     * Android's default RFCOMM connect() timeout is 12–30 s, which is too
+     * long for a page-open check. We force a 5 s limit by closing the socket
+     * from a timeout thread — closing unblocks connect() with IOException,
+     * giving us a reliable "not reachable" result without waiting forever.
+     *
+     * Returns true only if RFCOMM connects within 5 s; false otherwise.
+     */
+    @Suppress("MissingPermission")
+    private fun bluetoothQuickPing(mac: String, result: MethodChannel.Result) {
+        Thread {
+            try {
+                val adapter = BluetoothAdapter.getDefaultAdapter()
+                adapter?.cancelDiscovery()
+                val device = adapter?.getRemoteDevice(mac)
+                val socket = device?.createRfcommSocketToServiceRecord(
+                    UUID.fromString(SPP_UUID)
+                )
+
+                // Close socket after 5 s to unblock connect() if no response.
+                val timeoutThread = Thread {
+                    try {
+                        Thread.sleep(5_000L)
+                        socket?.close()
+                    } catch (_: InterruptedException) {}
+                }
+                timeoutThread.isDaemon = true
+                timeoutThread.start()
+
+                try {
+                    socket?.connect()
+                    timeoutThread.interrupt()   // Connected — cancel the timeout.
+                    try { socket?.close() } catch (_: Exception) {}
+                    runOnUiThread { result.success(true) }
+                } catch (_: Exception) {
+                    runOnUiThread { result.success(false) }
+                }
+            } catch (_: Exception) {
+                runOnUiThread { result.success(false) }
+            }
+        }.start()
     }
 
     /** Return true if the device Bluetooth adapter is currently enabled. */
@@ -295,16 +444,27 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * Connect to a USB printer by device ID.
+     * Connect to a USB printer by vendorId-productId (e.g. "1208-514").
+     *
+     * Using vendorId+productId instead of deviceId makes the saved address
+     * stable across unplug/replug cycles — Android reassigns deviceId on
+     * every enumeration, but vendorId+productId are burned into the hardware.
      *
      * Requests permission if needed, then claims the printer interface
      * and finds the bulk OUT endpoint for data transfer.
      */
-    private fun usbConnect(deviceId: String, result: MethodChannel.Result) {
+    private fun usbConnect(vendorProductId: String, result: MethodChannel.Result) {
         val manager = getSystemService(Context.USB_SERVICE) as UsbManager
-        val targetId = deviceId.toIntOrNull()
+        val parts = vendorProductId.split("-")
+        val targetVendor = parts.getOrNull(0)?.toIntOrNull()
+        val targetProduct = parts.getOrNull(1)?.toIntOrNull()
 
-        val device = manager.deviceList.values.firstOrNull { it.deviceId == targetId }
+        val device = if (targetVendor != null && targetProduct != null) {
+            manager.deviceList.values.firstOrNull {
+                it.vendorId == targetVendor && it.productId == targetProduct
+            }
+        } else null
+
         if (device == null) {
             result.success(false)
             return

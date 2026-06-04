@@ -14,6 +14,7 @@ import '../../../shared/data/models/kiosk_config.dart';
 import '../../../shared/data/models/template.dart';
 import '../../app/bloc/app_cubit.dart';
 import '../../app/bloc/app_state.dart';
+import '../data/services/local_session_service.dart';
 
 /// Preview & Retake screen — composite preview + retake.
 ///
@@ -86,9 +87,20 @@ class _PreviewScreenState extends State<PreviewScreen>
 
   void _proceed(BuildContext context) {
     final storage = sl<StorageService>();
+    final template = _findTemplate(context);
+
+    // Save session locally as backup (fire-and-forget)
+    if (template != null) {
+      sl<LocalSessionService>()
+          .save(
+            templateId: widget.templateId,
+            templateName: template.name,
+            capturedPhotos: widget.capturedPhotos,
+          )
+          .ignore();
+    }
 
     if (storage.isEventMode) {
-      final template = _findTemplate(context);
       final configJson = storage.kioskConfigJson;
       if (template == null || configJson == null) {
         context.go('/screensaver');

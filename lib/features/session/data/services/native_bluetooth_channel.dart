@@ -48,6 +48,33 @@ class NativeBluetoothChannel implements PrintChannel {
         .toList();
   }
 
+  /// Perform real Bluetooth discovery (~12 s) and return printers found.
+  ///
+  /// Only returns devices that are physically on and broadcasting —
+  /// unlike [pairedDevices] which returns the full bonded list.
+  /// Returns maps with keys: `name`, `mac`.
+  static Future<List<Map<String, dynamic>>> discoverPrinters() async {
+    final result =
+        await _channel.invokeMethod<List<dynamic>>('discoverPrinters');
+    if (result == null) return [];
+    return result
+        .cast<Map<dynamic, dynamic>>()
+        .map((m) => m.cast<String, dynamic>())
+        .toList();
+  }
+
+  /// Quick reachability check with a 5-second hard timeout.
+  ///
+  /// Returns true if RFCOMM connects within 5 s, false otherwise.
+  /// Use this for page-open checks — not for full validation before saving.
+  static Future<bool> quickPing(String mac) async {
+    final result = await _channel.invokeMethod<bool>(
+      'quickPing',
+      {'mac': mac},
+    );
+    return result ?? false;
+  }
+
   /// Return true if the device Bluetooth adapter is currently enabled.
   static Future<bool> isEnabled() async {
     final result = await _channel.invokeMethod<bool>('isEnabled');

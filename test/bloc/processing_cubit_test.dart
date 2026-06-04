@@ -119,6 +119,10 @@ void main() {
     when(() => mockStorageService.ditherAlgorithm).thenReturn('fs');
     when(() => mockStorageService.sharpenAmount).thenReturn(0.25);
     when(() => mockStorageService.brightness).thenReturn(8.0);
+    // Printer mechanics — match service defaults.
+    when(() => mockStorageService.printWidth).thenReturn(576);
+    when(() => mockStorageService.cutMode).thenReturn('full');
+    when(() => mockStorageService.feedLines).thenReturn(3);
   });
 
   ProcessingCubit buildCubit() => ProcessingCubit(

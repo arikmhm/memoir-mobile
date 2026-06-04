@@ -4,7 +4,6 @@ import '../../../../di.dart';
 import '../../../../shared/core/theme/app_colors.dart';
 import '../../../../shared/core/theme/app_spacing.dart';
 import '../../../../shared/data/datasources/storage_service.dart';
-import '../widgets/screen_configs/booth_settings_section.dart';
 import '../widgets/screen_configs/page_bg_section.dart';
 import '../widgets/screen_configs/processing_settings_section.dart';
 import '../widgets/screen_configs/screensaver_config_section.dart';
@@ -46,7 +45,7 @@ class ScreenConfigPage extends StatelessWidget {
       case 'preview':
         return _withBg('preview', null);
       case 'confirmation':
-        return _withBg('confirmation', BoothSettingsSection(storageService: sl<StorageService>()));
+        return _withBg('confirmation', null);
       case 'processing':
         return _withBg('processing', ProcessingSettingsSection(storageService: sl<StorageService>()));
       case 'thank-you':

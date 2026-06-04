@@ -9,12 +9,10 @@ import '../../../shared/data/datasources/storage_service.dart';
 import '../../../shared/data/models/kiosk_config.dart';
 import 'pages/booth_mode_page.dart';
 import 'pages/devices_page.dart';
-import 'pages/image_processing_page.dart';
 import 'pages/page_setting_page.dart';
-import 'pages/payment_page.dart';
 import 'pages/template_page.dart';
 import 'pages/timer_settings_page.dart';
-import 'widgets/template_list_section.dart';
+import 'widgets/saved_sessions_section.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,11 +25,9 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _tabs = [
     _TabDef(icon: Icons.dashboard_outlined, label: 'Template'),
     _TabDef(icon: Icons.display_settings_outlined, label: 'Page Setting'),
-    _TabDef(icon: Icons.tune_outlined, label: 'Mode Booth'),
+    _TabDef(icon: Icons.storefront_outlined, label: 'Operasional Booth'),
     _TabDef(icon: Icons.timer_outlined, label: 'Timer'),
-    _TabDef(icon: Icons.payment_outlined, label: 'Pembayaran'),
     _TabDef(icon: Icons.devices_outlined, label: 'Perangkat'),
-    _TabDef(icon: Icons.image_outlined, label: 'Pemrosesan Gambar'),
   ];
 
   void _navigateToMenu(int index) {
@@ -40,9 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
       1 => const PageSettingPage(),
       2 => const BoothModePage(),
       3 => const TimerSettingsPage(),
-      4 => const PaymentPage(),
-      5 => const DevicesPage(),
-      6 => const ImageProcessingPage(),
+      4 => const DevicesPage(),
       _ => null,
     };
     if (page == null) return;
@@ -129,7 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: AppSpacing.lg),
-                  const TemplateListSection(),
+                  const SavedSessionsSection(),
                   const SizedBox(height: AppSpacing.xxl),
                   Center(
                     child: Text(

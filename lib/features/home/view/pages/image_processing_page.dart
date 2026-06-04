@@ -80,6 +80,11 @@ class _ImageProcessingBodyState extends State<_ImageProcessingBody> {
   late double _sharpen;
   late double _brightness;
 
+  // Printer mechanics (paper width, cut, feed) — physical ESC/POS output.
+  late int _printWidth;
+  late String _cutMode;
+  late int _feedLines;
+
   Timer? _debouncer;
 
   /// True from when a setting changes until the debounce timer fires.
@@ -93,6 +98,9 @@ class _ImageProcessingBodyState extends State<_ImageProcessingBody> {
         dither: DitherAlgorithm.fromKey(_dither),
         sharpenAmount: _sharpen,
         brightness: _brightness,
+        printWidth: _printWidth,
+        cutMode: CutMode.fromKey(_cutMode),
+        feedLines: _feedLines,
       );
 
   @override
@@ -102,6 +110,9 @@ class _ImageProcessingBodyState extends State<_ImageProcessingBody> {
     _dither = _storage.ditherAlgorithm;
     _sharpen = _storage.sharpenAmount;
     _brightness = _storage.brightness;
+    _printWidth = _storage.printWidth;
+    _cutMode = _storage.cutMode;
+    _feedLines = _storage.feedLines;
   }
 
   @override
@@ -224,6 +235,27 @@ class _ImageProcessingBodyState extends State<_ImageProcessingBody> {
               _scheduleRerender();
             },
             onReset: _resetToDefaults,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _PrinterMechanicsCard(
+            printWidth: _printWidth,
+            cutMode: _cutMode,
+            feedLines: _feedLines,
+            onPrintWidthChanged: (v) {
+              setState(() => _printWidth = v);
+              _storage.setPrintWidth(v);
+              _scheduleRerender(); // changes the preview scale
+            },
+            onCutModeChanged: (v) {
+              setState(() => _cutMode = v);
+              _storage.setCutMode(v);
+            },
+            onFeedChanged: (v) {
+              setState(() => _feedLines = v.round());
+            },
+            onFeedChangeEnd: (v) {
+              _storage.setFeedLines(v.round());
+            },
           ),
         ],
       ),
@@ -756,6 +788,124 @@ class _ControlsCard extends StatelessWidget {
             style: TextButton.styleFrom(
               foregroundColor: AppColors.textSecondary,
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Printer mechanics card — paper width + cut mode + feed
+// ════════════════════════════════════════════════════════════════════
+
+class _PrinterMechanicsCard extends StatelessWidget {
+  final int printWidth;
+  final String cutMode;
+  final int feedLines;
+  final ValueChanged<int> onPrintWidthChanged;
+  final ValueChanged<String> onCutModeChanged;
+  final ValueChanged<double> onFeedChanged;
+  final ValueChanged<double> onFeedChangeEnd;
+
+  const _PrinterMechanicsCard({
+    required this.printWidth,
+    required this.cutMode,
+    required this.feedLines,
+    required this.onPrintWidthChanged,
+    required this.onCutModeChanged,
+    required this.onFeedChanged,
+    required this.onFeedChangeEnd,
+  });
+
+  static const _widthLabels = {
+    PrintWidth.mm58: '58 mm',
+    PrintWidth.mm80narrow: '80 mm · 512',
+    PrintWidth.mm80: '80 mm · 576',
+  };
+
+  static const _cutLabels = {
+    'full': 'Penuh',
+    'partial': 'Sebagian',
+    'none': 'Tidak',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return MemoirSectionCard(
+      label: 'Mekanis Printer',
+      subtitle:
+          'Lebar kertas, mode potong, dan feed kertas. Berlaku untuk sesi '
+          'foto berikutnya dan test cetak.',
+      icon: Icons.straighten_outlined,
+      children: [
+        _ControlGroup(
+          title: 'Lebar Kertas',
+          description:
+              'Lebar cetak dalam dot (203 DPI). Pilih sesuai printer; strip '
+              'foto otomatis diskalakan agar pas dan tidak terpotong.',
+          child: Row(
+            children: [
+              for (final w in PrintWidth.options)
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      right: w == PrintWidth.options.last ? 0 : AppSpacing.xs,
+                    ),
+                    child: TimeoutChip(
+                      label: _widthLabels[w] ?? '$w',
+                      isActive: printWidth == w,
+                      onTap: () => onPrintWidthChanged(w),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        const Divider(height: 1, color: AppColors.border),
+        const SizedBox(height: AppSpacing.md),
+        _ControlGroup(
+          title: 'Mode Potong',
+          description:
+              'Penuh = kertas terpotong penuh. Sebagian = sisakan sambungan '
+              'kecil. Tidak = tanpa potong otomatis (sobek manual).',
+          child: Row(
+            children: [
+              for (final m in const ['full', 'partial', 'none'])
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      right: m == 'none' ? 0 : AppSpacing.xs,
+                    ),
+                    child: TimeoutChip(
+                      label: _cutLabels[m] ?? m,
+                      isActive: cutMode == m,
+                      onTap: () => onCutModeChanged(m),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        const Divider(height: 1, color: AppColors.border),
+        const SizedBox(height: AppSpacing.md),
+        _ControlGroup(
+          title: 'Feed Sebelum Potong',
+          description:
+              'Jumlah baris kertas yang dimajukan sebelum dipotong — margin '
+              'sobek di bawah gambar agar konten tidak terpotong.',
+          child: _SliderRow(
+            value: feedLines.toDouble(),
+            min: 0,
+            max: 10,
+            divisions: 10,
+            valueLabel: '$feedLines baris',
+            hintLeft: 'Pendek',
+            hintRight: 'Panjang',
+            onChanged: onFeedChanged,
+            onChangeEnd: onFeedChangeEnd,
           ),
         ),
       ],

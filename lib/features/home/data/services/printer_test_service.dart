@@ -29,21 +29,25 @@ class PrinterTestService {
 
     if (denied.isNotEmpty) {
       throw Exception(
-        'Izin Bluetooth ditolak. Aktifkan izin "Nearby devices" '
-        'di Pengaturan > Aplikasi > memoir > Izin.',
+        'Izin Bluetooth diperlukan. '
+        'Buka Pengaturan › Aplikasi › memoir › Izin '
+        'dan aktifkan "Perangkat terdekat".',
       );
     }
   }
 
-  /// Get list of Bluetooth devices paired in Android settings.
+  /// Return paired Bluetooth printers (IMAGING / UNCATEGORIZED class only).
+  ///
+  /// Uses the bonded-devices list rather than live discovery because most
+  /// thermal printers stop broadcasting after initial pairing. Class
+  /// filtering removes phones, headsets, and speakers so only likely
+  /// printers appear. Validation happens separately on selection (Option A).
   Future<List<PrinterInfo>> scanBluetoothPrinters() async {
     await _ensureBluetoothPermissions();
 
     final isOn = await NativeBluetoothChannel.isEnabled();
     if (!isOn) {
-      throw Exception(
-        'Bluetooth tidak aktif. Nyalakan Bluetooth terlebih dahulu.',
-      );
+      throw Exception('Bluetooth tidak aktif. Nyalakan Bluetooth lalu coba lagi.');
     }
 
     final paired = await NativeBluetoothChannel.pairedDevices();
@@ -73,7 +77,7 @@ class PrinterTestService {
           .map(
             (d) => PrinterInfo(
               name: d['deviceName'] as String? ?? 'USB Printer',
-              address: '${d['deviceId']}',
+              address: '${d['vendorId']}-${d['productId']}',
               connectionType: PrinterConnectionType.usb,
             ),
           )
@@ -84,26 +88,73 @@ class PrinterTestService {
     final allDevices = await NativeUsbChannel.listAllDevices();
     if (allDevices.isEmpty) {
       throw Exception(
-        'Tidak ada perangkat USB yang terdeteksi oleh Android.\n\n'
-        'Kemungkinan penyebab:\n'
-        '• Tablet tidak mengaktifkan USB host mode — coba adapter OTG lain '
-        '(pastikan adapter mendukung mode host/DFP, bukan hanya charging)\n'
-        '• Pada Samsung tablet tertentu, OTG hanya aktif dengan adapter resmi\n'
-        '• Coba cabut dan pasang ulang adapter OTG',
+        'Printer USB tidak terdeteksi. '
+        'Pastikan kabel OTG terpasang dengan benar dan printer dalam keadaan menyala. '
+        'Coba cabut lalu pasang ulang kabel OTG.',
       );
     }
 
-    // OS sees the device but isPrinterDevice filtered it out.
-    final names = allDevices
-        .map((d) =>
-            '${d['deviceName']} (class=${d['deviceClass']}, '
-            'interfaces=${d['interfaceClasses']})')
-        .join('\n');
+    // OS sees a device but isPrinterDevice filtered it out.
     throw Exception(
-      '${allDevices.length} perangkat USB terdeteksi, namun tidak ada yang '
-      'dikenali sebagai printer:\n$names\n\n'
-      'Hubungi developer dengan info di atas.',
+      'Perangkat USB terdeteksi namun tidak dikenali sebagai printer. '
+      'Coba cabut dan pasang ulang, atau gunakan printer yang berbeda.',
     );
+  }
+
+  /// Return the first physically-connected USB printer, or null if none.
+  ///
+  /// Silent (never throws) — used for page-open detection where a plugged-in
+  /// USB printer should automatically become the active printer.
+  Future<PrinterInfo?> findConnectedUsbPrinter() async {
+    final devices = await NativeUsbChannel.listDevices();
+    if (devices.isEmpty) return null;
+    final d = devices.first;
+    return PrinterInfo(
+      name: d['deviceName'] as String? ?? 'USB Printer',
+      address: '${d['vendorId']}-${d['productId']}',
+      connectionType: PrinterConnectionType.usb,
+    );
+  }
+
+  /// Quick reachability ping for page-open verification of a saved BT printer.
+  ///
+  /// Returns:
+  /// - `true`  — printer responded within the 5 s RFCOMM timeout.
+  /// - `false` — printer did not respond (off / out of range / gone).
+  /// - `null`  — could not verify: Bluetooth permission not granted or the
+  ///   adapter is off. Caller should keep the saved printer as-is rather than
+  ///   clearing it.
+  ///
+  /// Never prompts for permission — page open must not surface a dialog. We
+  /// only read the current permission status; if it isn't already granted we
+  /// return `null` (unverifiable) instead of requesting.
+  Future<bool?> quickPingBluetooth(PrinterInfo printer) async {
+    final status = await Permission.bluetoothConnect.status;
+    if (!status.isGranted) return null;
+
+    final isOn = await NativeBluetoothChannel.isEnabled();
+    if (!isOn) return null;
+
+    try {
+      return await NativeBluetoothChannel.quickPing(printer.address);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Validate a Bluetooth printer is reachable by opening and immediately
+  /// closing an RFCOMM connection — no data sent.
+  Future<void> validateBluetoothConnection(PrinterInfo printer) async {
+    await _ensureBluetoothPermissions();
+    final channel = NativeBluetoothChannel();
+    final connected = await channel.connect(printer.address);
+    if (!connected) {
+      throw Exception(
+        'Printer tidak merespons. '
+        'Pastikan printer menyala dan berada dalam jangkauan Bluetooth.',
+      );
+    }
+    await channel.disconnect();
   }
 
   /// Perform a test print on the given printer.
@@ -133,7 +184,7 @@ class PrinterTestService {
       final connected = await channel.connect(printerInfo.address);
       if (!connected) {
         throw Exception(
-          'Gagal terhubung ke printer USB "${printerInfo.name}". '
+          'Koneksi USB ke printer gagal. '
           'Pastikan kabel OTG terpasang dengan benar.',
         );
       }
@@ -141,7 +192,10 @@ class PrinterTestService {
         for (final band in bands) {
           final ok = await channel.write(band);
           if (!ok) {
-            throw Exception('Gagal mengirim data ke printer USB.');
+            throw Exception(
+              'Gagal mengirim data ke printer. '
+              'Periksa kertas dan pastikan printer menyala.',
+            );
           }
         }
       } finally {
@@ -153,15 +207,18 @@ class PrinterTestService {
       final connected = await channel.connect(printerInfo.address);
       if (!connected) {
         throw Exception(
-          'Gagal terhubung ke printer "${printerInfo.name}". '
-          'Pastikan printer menyala dan sudah di-pair.',
+          'Koneksi Bluetooth ke printer gagal. '
+          'Pastikan printer menyala dan berada dalam jangkauan.',
         );
       }
       try {
         for (final band in bands) {
           final ok = await channel.write(band);
           if (!ok) {
-            throw Exception('Gagal mengirim data ke printer Bluetooth.');
+            throw Exception(
+              'Gagal mengirim data ke printer. '
+              'Periksa kertas dan pastikan printer menyala.',
+            );
           }
         }
       } finally {
@@ -256,15 +313,18 @@ class PrinterTestService {
     final connected = await channel.connect(printerInfo.address);
     if (!connected) {
       throw Exception(
-        'Gagal terhubung ke printer "${printerInfo.name}". '
-        'Pastikan printer menyala dan sudah di-pair.',
+        'Koneksi Bluetooth ke printer gagal. '
+        'Pastikan printer menyala dan berada dalam jangkauan.',
       );
     }
 
     try {
       final success = await channel.write(Uint8List.fromList(bytes));
       if (!success) {
-        throw Exception('Gagal mengirim data ke printer Bluetooth.');
+        throw Exception(
+          'Gagal mengirim data ke printer. '
+          'Periksa kertas dan pastikan printer menyala.',
+        );
       }
     } finally {
       await channel.disconnect();
@@ -281,7 +341,7 @@ class PrinterTestService {
     final connected = await channel.connect(printerInfo.address);
     if (!connected) {
       throw Exception(
-        'Gagal terhubung ke printer USB "${printerInfo.name}". '
+        'Koneksi USB ke printer gagal. '
         'Pastikan kabel OTG terpasang dengan benar.',
       );
     }
@@ -289,7 +349,10 @@ class PrinterTestService {
     try {
       final success = await channel.write(Uint8List.fromList(bytes));
       if (!success) {
-        throw Exception('Gagal mengirim data ke printer USB.');
+        throw Exception(
+          'Gagal mengirim data ke printer. '
+          'Periksa kertas dan pastikan printer menyala.',
+        );
       }
     } finally {
       await channel.disconnect();

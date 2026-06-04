@@ -11,6 +11,7 @@ import 'package:memoir_v1/features/home/data/services/printer_test_service.dart'
 import 'package:memoir_v1/features/session/data/services/composite_render_service.dart';
 import 'package:memoir_v1/features/startup/data/repositories/startup_repository.dart';
 import 'package:memoir_v1/shared/data/datasources/storage_service.dart';
+import 'package:memoir_v1/shared/data/services/print_channel.dart';
 
 // ─── Mocks ──────────────────────────────────────────────────────────
 
@@ -34,6 +35,12 @@ void main() {
   late MockStorageService mockStorageService;
   late MockStartupRepository mockStartupRepository;
   late MockAppCubit mockAppCubit;
+
+  setUpAll(() {
+    registerFallbackValue(
+      const PrinterInfo(name: '', address: ''),
+    );
+  });
 
   setUp(() {
     mockCameraService = MockCameraTestService();
@@ -211,6 +218,85 @@ void main() {
               connectionType: 'bluetooth',
             ),
           ).called(1);
+        },
+      );
+    });
+
+    // ─── Page-open verification ───────────────────────────────────
+
+    group('verifyPrinterOnPageOpen', () {
+      const btPrinter = PrinterInfo(
+        name: 'BT Printer',
+        address: 'AA:BB:CC:DD:EE:FF',
+        connectionType: PrinterConnectionType.bluetooth,
+      );
+
+      void stubSavedBluetooth() {
+        when(() => mockStorageService.hasDefaultPrinter).thenReturn(true);
+        when(() => mockStorageService.defaultPrinterName)
+            .thenReturn(btPrinter.name);
+        when(() => mockStorageService.defaultPrinterMac)
+            .thenReturn(btPrinter.address);
+        when(() => mockStorageService.defaultPrinterConnectionType)
+            .thenReturn('bluetooth');
+        when(() => mockPrinterService.findConnectedUsbPrinter())
+            .thenAnswer((_) async => null);
+      }
+
+      blocTest<HomeCubit, HomeState>(
+        'reachable BT → shows saved card and flags reachable, keeps config',
+        build: () {
+          stubSavedBluetooth();
+          when(() => mockPrinterService.quickPingBluetooth(any()))
+              .thenAnswer((_) async => true);
+          return buildCubit();
+        },
+        act: (cubit) => cubit.verifyPrinterOnPageOpen(),
+        expect: () => [
+          const PrinterCheckingConnection(printer: btPrinter),
+          const PrinterSaved(printer: btPrinter),
+        ],
+        verify: (cubit) {
+          expect(cubit.savedBluetoothReachable, isTrue);
+          verifyNever(() => mockStorageService.clearDefaultPrinter());
+        },
+      );
+
+      blocTest<HomeCubit, HomeState>(
+        'unreachable BT → hides card (HomeInitial) but keeps config',
+        build: () {
+          stubSavedBluetooth();
+          when(() => mockPrinterService.quickPingBluetooth(any()))
+              .thenAnswer((_) async => false);
+          return buildCubit();
+        },
+        act: (cubit) => cubit.verifyPrinterOnPageOpen(),
+        expect: () => [
+          const PrinterCheckingConnection(printer: btPrinter),
+          const HomeInitial(),
+        ],
+        verify: (cubit) {
+          expect(cubit.savedBluetoothReachable, isFalse);
+          verifyNever(() => mockStorageService.clearDefaultPrinter());
+        },
+      );
+
+      blocTest<HomeCubit, HomeState>(
+        'unverifiable BT (null: BT off / no permission) → hides card, keeps config',
+        build: () {
+          stubSavedBluetooth();
+          when(() => mockPrinterService.quickPingBluetooth(any()))
+              .thenAnswer((_) async => null);
+          return buildCubit();
+        },
+        act: (cubit) => cubit.verifyPrinterOnPageOpen(),
+        expect: () => [
+          const PrinterCheckingConnection(printer: btPrinter),
+          const HomeInitial(),
+        ],
+        verify: (cubit) {
+          expect(cubit.savedBluetoothReachable, isFalse);
+          verifyNever(() => mockStorageService.clearDefaultPrinter());
         },
       );
     });

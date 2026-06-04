@@ -30,6 +30,17 @@ class HomeCubit extends Cubit<HomeState> {
   /// has been requested before the previous one finished.
   int _previewRequestId = 0;
 
+  /// Whether the saved Bluetooth printer responded to the last page-open
+  /// reachability ping. Controls *display* only — the config is always kept.
+  /// A printer that's merely off/out-of-range stays saved and reappears once
+  /// it's reachable again, without forcing a re-scan.
+  bool _savedBluetoothReachable = false;
+
+  /// Whether the saved Bluetooth printer is currently reachable (last verified
+  /// on page open). USB printers don't use this — their saved entry only
+  /// exists while physically connected (cleared on unplug at page open).
+  bool get savedBluetoothReachable => _savedBluetoothReachable;
+
   HomeCubit({
     required CameraTestService cameraService,
     required PrinterTestService printerService,
@@ -86,6 +97,85 @@ class HomeCubit extends Cubit<HomeState> {
 
   // ─── Printer Test ─────────────────────────────────────────────
 
+  /// On page open: decide the active printer.
+  ///
+  /// **USB presence wins** — if a USB printer is physically plugged in, it
+  /// becomes the active printer automatically, overwriting any saved printer
+  /// (including Bluetooth). Plugging in USB is a strong intent signal in a
+  /// kiosk, so it takes priority.
+  ///
+  /// When no USB is connected:
+  /// - saved is USB → it was unplugged → clear, show scan UI.
+  /// - saved is Bluetooth → quick-ping (5 s) to verify reachability. The
+  ///   config is always kept; reachability only flags whether the saved card
+  ///   should be shown (see [savedBluetoothReachable]). Reachable → show as
+  ///   saved; off / out of range / unverifiable → hide the card but keep it.
+  /// - nothing saved → show scan UI.
+  ///
+  /// Emits [PrinterCheckingConnection] before any storage change so the UI
+  /// always transitions away from [HomeInitial]; Cubit skips emitting when
+  /// the new state equals the current one (Equatable), which would otherwise
+  /// prevent the builder from re-running after a clear.
+  Future<void> verifyPrinterOnPageOpen() async {
+    final saved = savedPrinter;
+
+    PrinterInfo? connectedUsb;
+    try {
+      connectedUsb = await _printerService.findConnectedUsbPrinter();
+    } catch (_) {
+      connectedUsb = null;
+    }
+
+    // ── A USB printer is plugged in → it wins ──
+    if (connectedUsb != null) {
+      final alreadySaved = saved != null &&
+          saved.connectionType == PrinterConnectionType.usb &&
+          saved.address == connectedUsb.address;
+      if (alreadySaved) {
+        emit(PrinterSaved(printer: saved));
+        return;
+      }
+      emit(PrinterCheckingConnection(printer: connectedUsb));
+      await _storageService.setDefaultPrinter(
+        name: connectedUsb.name,
+        mac: connectedUsb.address,
+        connectionType: connectedUsb.connectionType.key,
+      );
+      emit(PrinterSaved(printer: connectedUsb));
+      return;
+    }
+
+    // ── No USB connected ──
+    if (saved == null) {
+      emit(const HomeInitial());
+      return;
+    }
+    if (saved.connectionType == PrinterConnectionType.usb) {
+      // Saved USB was unplugged → clear and return to scan UI.
+      emit(PrinterCheckingConnection(printer: saved));
+      await _storageService.clearDefaultPrinter();
+      emit(const HomeInitial());
+      return;
+    }
+
+    // Saved Bluetooth — verify reachability with a quick ping (5 s). The
+    // config is always kept in storage; reachability only controls whether
+    // the saved card is shown, so a printer that's merely off/out-of-range
+    // stops masquerading as "TERSIMPAN" yet reappears automatically once it
+    // becomes reachable again — no re-scan needed.
+    emit(PrinterCheckingConnection(printer: saved));
+    final reachable = await _printerService.quickPingBluetooth(saved);
+    if (reachable == true) {
+      _savedBluetoothReachable = true;
+      emit(PrinterSaved(printer: saved));
+    } else {
+      // Off / out of range / unverifiable (BT off / no permission) → hide the
+      // card but keep the config. Scan UI shows so the operator can act.
+      _savedBluetoothReachable = false;
+      emit(const HomeInitial());
+    }
+  }
+
   /// Scan for paired Bluetooth printers.
   Future<void> scanPrinters() async {
     emit(const PrinterScanInProgress());
@@ -123,7 +213,42 @@ class HomeCubit extends Cubit<HomeState> {
       mac: printer.address,
       connectionType: printer.connectionType.key,
     );
+    // A BT printer reaches here only after a successful reachability validation
+    // (see [validateAndSelectPrinter]), so it's known reachable for display.
+    if (printer.connectionType == PrinterConnectionType.bluetooth) {
+      _savedBluetoothReachable = true;
+    }
     emit(PrinterSaved(printer: printer));
+  }
+
+  /// Validate reachability before saving.
+  ///
+  /// For Bluetooth: attempt RFCOMM connect + disconnect. If unreachable,
+  /// emits [PrinterValidationFailed] and restores the scan list.
+  /// For USB: already physically connected — skip validation, save directly.
+  Future<void> validateAndSelectPrinter(PrinterInfo printer) async {
+    if (printer.connectionType == PrinterConnectionType.usb) {
+      await selectPrinter(printer);
+      return;
+    }
+
+    final scanResults = switch (state) {
+      PrinterScanComplete(:final printers) => printers,
+      PrinterValidationFailed(:final printers) => printers,
+      _ => <PrinterInfo>[],
+    };
+
+    emit(PrinterValidating(printer: printer, scanResults: scanResults));
+
+    try {
+      await _printerService.validateBluetoothConnection(printer);
+      await selectPrinter(printer);
+    } on Exception catch (e) {
+      emit(PrinterValidationFailed(
+        message: e.toString().replaceFirst('Exception: ', ''),
+        printers: scanResults,
+      ));
+    }
   }
 
   /// Perform a test print on the saved printer.
@@ -141,6 +266,7 @@ class HomeCubit extends Cubit<HomeState> {
   /// Clear saved default printer and reset printer section.
   Future<void> clearDefaultPrinter() async {
     await _storageService.clearDefaultPrinter();
+    _savedBluetoothReachable = false;
     emit(const HomeInitial());
   }
 

@@ -76,6 +76,44 @@ final class PrinterSaved extends HomeState {
   List<Object?> get props => [printer];
 }
 
+/// Checking saved printer reachability on page open.
+final class PrinterCheckingConnection extends HomeState {
+  final PrinterInfo printer;
+
+  const PrinterCheckingConnection({required this.printer});
+
+  @override
+  List<Object?> get props => [printer];
+}
+
+/// Validating BT connection before saving — scan list stays visible.
+final class PrinterValidating extends HomeState {
+  final PrinterInfo printer;
+  final List<PrinterInfo> scanResults;
+
+  const PrinterValidating({
+    required this.printer,
+    required this.scanResults,
+  });
+
+  @override
+  List<Object?> get props => [printer, scanResults];
+}
+
+/// Validation failed — scan list restored so user can try another.
+final class PrinterValidationFailed extends HomeState {
+  final String message;
+  final List<PrinterInfo> printers;
+
+  const PrinterValidationFailed({
+    required this.message,
+    required this.printers,
+  });
+
+  @override
+  List<Object?> get props => [message, printers];
+}
+
 /// Printer test print in progress.
 final class PrinterTestInProgress extends HomeState {
   final PrinterInfo printer;

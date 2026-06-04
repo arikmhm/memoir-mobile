@@ -30,6 +30,45 @@ enum DitherAlgorithm {
   };
 }
 
+/// Paper cut behavior after a print job (ESC/POS `GS V`).
+enum CutMode {
+  /// No automatic cut — operator tears the paper manually.
+  none,
+
+  /// Partial cut — leaves a small connecting tab (`GS V 1`).
+  partial,
+
+  /// Full cut — severs the paper completely (`GS V 0`).
+  full;
+
+  String get key => switch (this) {
+    CutMode.none => 'none',
+    CutMode.partial => 'partial',
+    CutMode.full => 'full',
+  };
+
+  static CutMode fromKey(String? key) => switch (key) {
+    'none' => CutMode.none,
+    'partial' => CutMode.partial,
+    _ => CutMode.full,
+  };
+}
+
+/// Common thermal paper widths in printer dots (at 203 DPI).
+class PrintWidth {
+  /// 58 mm paper — 384 dots.
+  static const int mm58 = 384;
+
+  /// 80 mm paper, narrow head variant — 512 dots.
+  static const int mm80narrow = 512;
+
+  /// 80 mm paper, standard — 576 dots. Matches the template canvas width.
+  static const int mm80 = 576;
+
+  /// Allowed values surfaced in the UI.
+  static const List<int> options = [mm58, mm80narrow, mm80];
+}
+
 /// User-tunable image processing settings for thermal photo printing.
 ///
 /// All values are sendable across isolate boundaries (primitives + enum),
@@ -52,11 +91,27 @@ class ProcessingSettings {
   /// that darkens light areas. Negative values darken the image.
   final double brightness;
 
+  /// Target print width in printer dots — see [PrintWidth].
+  /// The composite is resized to this width before raster encoding so the
+  /// strip fits the paper without clipping. Default 576 (80 mm @ 203 DPI),
+  /// which matches the template canvas (a no-op resize on standard paper).
+  final int printWidth;
+
+  /// Paper cut after the job — see [CutMode]. Default [CutMode.full].
+  final CutMode cutMode;
+
+  /// Lines fed (`ESC d n`) before the cut, 0 … 15. Default 3 — leaves a
+  /// tear-off margin below the image so the cut doesn't clip content.
+  final int feedLines;
+
   const ProcessingSettings({
     this.thermalDensity = 2,
     this.dither = DitherAlgorithm.floydSteinberg,
     this.sharpenAmount = 0.25,
     this.brightness = 8.0,
+    this.printWidth = PrintWidth.mm80,
+    this.cutMode = CutMode.full,
+    this.feedLines = 3,
   });
 }
 
@@ -204,8 +259,9 @@ class CompositeRenderService {
       throw Exception('Gagal memproses foto preview.');
     }
 
-    // Match the print canvas width so dither density looks identical.
-    const previewW = 576;
+    // Match the configured print width so the on-screen preview reflects the
+    // actual paper (dither density + scale look identical to the print).
+    final previewW = settings.printWidth;
     final aspect = photo.height / photo.width;
     final previewH = (previewW * aspect).round();
 
@@ -692,6 +748,13 @@ class CompositeRenderService {
     ProcessingSettings settings, {
     bool addCut = true,
   }) {
+    // Fit the composite to the configured paper width (in dots). On standard
+    // 80 mm paper (576) this is a no-op since the template canvas already
+    // matches; on narrower paper it scales the whole strip down to fit so the
+    // image isn't clipped or pushed off-center.
+    if (colorCanvas.width != settings.printWidth) {
+      colorCanvas = img.copyResize(colorCanvas, width: settings.printWidth);
+    }
     final w = colorCanvas.width;
     final h = colorCanvas.height;
     final bytesPerRow = (w + 7) ~/ 8;
@@ -773,15 +836,19 @@ class CompositeRenderService {
     // finishes initializing and get printed as random text characters.
     bands.add(_buildInitBytes(settings.thermalDensity));
 
+    // Feed + cut tail appended to the last band. Empty when [addCut] is false
+    // (the caller will append a terminating band, e.g. the softfile QR).
+    final tail = addCut ? _buildFeedCutTail(settings) : const <int>[];
+
     for (var band = 0; band < numBands; band++) {
       final startY = band * _bandHeight;
       final bandH = math.min(_bandHeight, h - startY);
       final isLast = band == numBands - 1;
 
-      // Size: GS v 0 header(8) + pixel data + optional feed(3)+cut(4)
+      // Size: GS v 0 header(8) + pixel data + optional feed/cut tail.
       final pixelBytes = bytesPerRow * bandH;
       var size = 8 + pixelBytes;
-      if (isLast && addCut) size += 3 + 4; // ESC d + GS V
+      if (isLast) size += tail.length;
 
       final buf = Uint8List(size);
       var pos = 0;
@@ -831,20 +898,35 @@ class CompositeRenderService {
       }
 
       // Feed + cut on last band (skipped when caller will append a QR band).
-      if (isLast && addCut) {
-        buf[pos++] = 0x1B;
-        buf[pos++] = 0x64;
-        buf[pos++] = 0x03;
-        buf[pos++] = 0x1D;
-        buf[pos++] = 0x56;
-        buf[pos++] = 0x41;
-        buf[pos++] = 0x03;
+      if (isLast) {
+        for (final b in tail) {
+          buf[pos++] = b;
+        }
       }
 
       bands.add(buf);
     }
 
     return bands;
+  }
+
+  /// Build the trailing ESC/POS bytes for the final band: feed `n` lines then
+  /// cut according to [ProcessingSettings.cutMode].
+  ///
+  /// - `ESC d n` — feed [ProcessingSettings.feedLines] (0..15) lines.
+  /// - `GS V 0` / `GS V 1` — full / partial cut; omitted for [CutMode.none].
+  static List<int> _buildFeedCutTail(ProcessingSettings settings) {
+    final feed = settings.feedLines.clamp(0, 15);
+    final bytes = <int>[0x1B, 0x64, feed]; // ESC d n
+    switch (settings.cutMode) {
+      case CutMode.full:
+        bytes.addAll([0x1D, 0x56, 0x00]); // GS V 0 — full cut
+      case CutMode.partial:
+        bytes.addAll([0x1D, 0x56, 0x01]); // GS V 1 — partial cut
+      case CutMode.none:
+        break;
+    }
+    return bytes;
   }
 
   /// Floyd-Steinberg error diffusion on a Float64List band buffer (in-place).

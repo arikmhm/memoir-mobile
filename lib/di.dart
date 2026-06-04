@@ -14,6 +14,7 @@ import 'features/session/data/datasources/transaction_datasource.dart';
 import 'features/session/data/repositories/transaction_repository.dart';
 import 'features/session/data/services/composite_print_service.dart';
 import 'features/session/data/services/composite_render_service.dart';
+import 'features/session/data/services/local_session_service.dart';
 import 'features/home/bloc/home_cubit.dart';
 import 'features/home/data/services/camera_test_service.dart';
 import 'features/home/data/services/printer_test_service.dart';
@@ -149,6 +150,8 @@ Future<void> initDependencies() async {
   );
 
   // ─── Home ─────────────────────────────────────────────────
+
+  sl.registerLazySingleton<LocalSessionService>(() => LocalSessionService());
 
   sl.registerLazySingleton<CameraTestService>(() => CameraTestService());
   sl.registerLazySingleton<PrinterTestService>(() => PrinterTestService());

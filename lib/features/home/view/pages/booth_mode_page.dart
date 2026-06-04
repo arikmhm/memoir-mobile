@@ -31,7 +31,7 @@ class BoothModePage extends StatelessWidget {
           ),
         ),
         title: Text(
-          'Mode Booth',
+          'Operasional Booth',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: AppColors.textPrimary,
@@ -48,10 +48,10 @@ class BoothModePage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const MenuHeaderCard(
-              icon: Icons.tune_outlined,
-              title: 'Mode Booth',
+              icon: Icons.storefront_outlined,
+              title: 'Operasional Booth',
               description:
-                  'Tentukan mode operasi (Normal/Event), metode pembayaran, dan pengaturan cetak default.',
+                  'Tentukan mode operasi, metode pembayaran, dan pengaturan cetak default untuk sesi photobooth.',
             ),
             const SizedBox(height: AppSpacing.lg),
             BoothSettingsSection(storageService: sl<StorageService>()),
