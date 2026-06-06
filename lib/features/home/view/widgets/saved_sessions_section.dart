@@ -444,9 +444,14 @@ class _ReprintBottomSheetState extends State<_ReprintBottomSheet> {
     return KioskConfig.fromJsonString(json);
   }
 
-  // Reprint: tiap lembar = pricePerExtraPrint (tidak ada base session)
+  // Reprint: sama seperti transaksi normal — base session sudah termasuk
+  // 1 lembar, lembar berikutnya dihitung pricePerExtraPrint.
+  int _extraPrintTotal(KioskConfig config) =>
+      _printQty > 1 ? (_printQty - 1) * config.pricePerExtraPrint : 0;
+
   int _calcTotal(KioskConfig config) {
-    return _printQty * config.pricePerExtraPrint +
+    return config.priceBaseSession +
+        _extraPrintTotal(config) +
         (_hasDigitalCopy ? config.priceDigitalCopy : 0);
   }
 
@@ -567,7 +572,7 @@ class _ReprintBottomSheetState extends State<_ReprintBottomSheet> {
                 ),
                 const SizedBox(height: AppSpacing.md),
 
-                // ── Total ──
+                // ── Rincian harga ──
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.md,
@@ -577,23 +582,52 @@ class _ReprintBottomSheetState extends State<_ReprintBottomSheet> {
                     color: AppColors.surfaceVariant,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Column(
                     children: [
-                      const Text(
-                        'Total',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        ),
+                      _PriceRow(
+                        label: 'Harga sesi',
+                        value: Formatters.formatRupiah(config.priceBaseSession),
                       ),
-                      Text(
-                        Formatters.formatRupiah(_calcTotal(config)),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                          color: AppColors.textPrimary,
+                      if (_printQty > 1) ...[
+                        const SizedBox(height: AppSpacing.xs),
+                        _PriceRow(
+                          label: 'Cetak ekstra (${_printQty - 1} lembar)',
+                          value: Formatters.formatRupiah(
+                            _extraPrintTotal(config),
+                          ),
                         ),
+                      ],
+                      if (_hasDigitalCopy && config.priceDigitalCopy > 0) ...[
+                        const SizedBox(height: AppSpacing.xs),
+                        _PriceRow(
+                          label: 'Salinan digital',
+                          value:
+                              Formatters.formatRupiah(config.priceDigitalCopy),
+                        ),
+                      ],
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                        child: Divider(height: 1, color: AppColors.border),
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Total',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            Formatters.formatRupiah(_calcTotal(config)),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -722,6 +756,39 @@ class _OptionsRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─── Price Row ───────────────────────────────────────────────────
+
+class _PriceRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _PriceRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ],
     );
   }
 }
