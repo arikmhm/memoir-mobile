@@ -295,8 +295,7 @@ class _TestPreviewSection extends StatelessWidget {
         return MemoirSectionCard(
           label: 'Test Cetak',
           subtitle:
-              'Ambil foto contoh, lalu geser slider di bawah untuk melihat '
-              'efek setting langsung di layar (tanpa membuang kertas).',
+              'Ambil foto contoh, geser slider untuk lihat hasilnya langsung.',
           icon: Icons.preview_outlined,
           children: [
             _TestBody(
@@ -686,16 +685,12 @@ class _ControlsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return MemoirSectionCard(
       label: 'Pengaturan Cetak',
-      subtitle:
-          'Atur kepekatan, algoritma dithering, dan ketajaman. '
-          'Setting berlaku untuk sesi foto berikutnya.',
+      subtitle: 'Berlaku untuk sesi foto berikutnya.',
       icon: Icons.tune_outlined,
       children: [
         _ControlGroup(
           title: 'Kepekatan Cetak',
-          description:
-              'Ketebalan tinta thermal head. Rendah = tipis (kurangi belobor di kulit). '
-              'Tinggi = gelap (pulihkan detail yang pucat).',
+          description: 'Ketebalan tinta. Rendah = tipis, tinggi = gelap.',
           child: _SliderRow(
             value: density.toDouble(),
             min: 0,
@@ -714,8 +709,7 @@ class _ControlsCard extends StatelessWidget {
         _ControlGroup(
           title: 'Algoritma Dithering',
           description:
-              'Cara konversi foto ke hitam-putih. Floyd-Steinberg bagus untuk wajah/kulit '
-              '(gradasi halus). Atkinson lebih tajam untuk logo/garis.',
+              'Floyd-Steinberg: halus untuk wajah. Atkinson: tajam untuk logo/garis.',
           child: Row(
             children: [
               Expanded(
@@ -743,9 +737,7 @@ class _ControlsCard extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         _ControlGroup(
           title: 'Kecerahan',
-          description:
-              'Offset luminansi sebelum dithering. Positif (+) untuk mengangkat '
-              'area gelap, negatif (−) untuk meredupkan keseluruhan foto.',
+          description: 'Terangkan atau gelapkan foto secara keseluruhan.',
           child: _SliderRow(
             value: brightness,
             min: -30.0,
@@ -763,9 +755,7 @@ class _ControlsCard extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         _ControlGroup(
           title: 'Ketajaman',
-          description:
-              'Penguatan tepi (unsharp mask). Tinggi mempertajam garis tapi bisa '
-              'memunculkan halo/noise di area halus seperti kulit.',
+          description: 'Pertajam garis. Terlalu tinggi bisa bikin noise di kulit.',
           child: _SliderRow(
             value: sharpen,
             min: 0.0,
@@ -834,16 +824,13 @@ class _PrinterMechanicsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return MemoirSectionCard(
       label: 'Mekanis Printer',
-      subtitle:
-          'Lebar kertas, mode potong, dan feed kertas. Berlaku untuk sesi '
-          'foto berikutnya dan test cetak.',
+      subtitle: 'Lebar kertas, potong, dan feed. Berlaku untuk semua cetakan.',
       icon: Icons.straighten_outlined,
       children: [
         _ControlGroup(
           title: 'Lebar Kertas',
           description:
-              'Lebar cetak dalam dot (203 DPI). Pilih sesuai printer; strip '
-              'foto otomatis diskalakan agar pas dan tidak terpotong.',
+              'Sesuaikan dengan printer. Strip foto otomatis diskalakan agar pas.',
           child: Row(
             children: [
               for (final w in PrintWidth.options)
@@ -868,8 +855,7 @@ class _PrinterMechanicsCard extends StatelessWidget {
         _ControlGroup(
           title: 'Mode Potong',
           description:
-              'Penuh = kertas terpotong penuh. Sebagian = sisakan sambungan '
-              'kecil. Tidak = tanpa potong otomatis (sobek manual).',
+              'Penuh, sebagian (sisakan sambungan), atau tanpa potong.',
           child: Row(
             children: [
               for (final m in const ['full', 'partial', 'none'])
@@ -893,9 +879,7 @@ class _PrinterMechanicsCard extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         _ControlGroup(
           title: 'Feed Sebelum Potong',
-          description:
-              'Jumlah baris kertas yang dimajukan sebelum dipotong — margin '
-              'sobek di bawah gambar agar konten tidak terpotong.',
+          description: 'Baris kosong sebelum potong, sebagai margin sobek.',
           child: _SliderRow(
             value: feedLines.toDouble(),
             min: 0,
