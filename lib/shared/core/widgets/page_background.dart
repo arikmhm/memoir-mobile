@@ -15,6 +15,11 @@ import '../../data/datasources/storage_service.dart';
 ///
 /// [pageKey] must match the key used when saving in settings
 /// (e.g. 'selectTemplate', 'photoSession', 'preview').
+///
+/// Config is re-read on every [build] (cheap in-memory prefs lookup) so a
+/// background changed in settings is reflected on the next session without
+/// having to wait for the widget's State to be disposed/recreated. File IO
+/// and video (re)initialization only run when the stored config changes.
 class PageBackground extends StatefulWidget {
   final String pageKey;
   const PageBackground({super.key, required this.pageKey});
@@ -24,38 +29,16 @@ class PageBackground extends StatefulWidget {
 }
 
 class _PageBackgroundState extends State<PageBackground> {
-  late String _bgType;
+  // Last raw config read from storage — used to short-circuit re-resolution.
+  String? _lastRawType;
+  String? _lastRawPath;
+
+  // Resolved (validated) config.
+  String _bgType = 'default';
   String? _bgFilePath;
+
   VideoPlayerController? _videoController;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadConfig();
-  }
-
-  void _loadConfig() {
-    final storage = sl<StorageService>();
-    final type = storage.pageBgType(widget.pageKey);
-    final path = storage.pageBgFilePath(widget.pageKey);
-    if ((type == 'image' || type == 'video') &&
-        (path == null || !File(path).existsSync())) {
-      _bgType = 'default';
-      return;
-    }
-    _bgType = type;
-    _bgFilePath = path;
-    if (_bgType == 'video') _initVideo();
-  }
-
-  Future<void> _initVideo() async {
-    _videoController = VideoPlayerController.file(File(_bgFilePath!));
-    await _videoController!.initialize();
-    _videoController!.setLooping(true);
-    _videoController!.setVolume(0);
-    _videoController!.play();
-    if (mounted) setState(() {});
-  }
+  String? _videoControllerPath;
 
   @override
   void dispose() {
@@ -63,11 +46,70 @@ class _PageBackgroundState extends State<PageBackground> {
     super.dispose();
   }
 
+  /// Re-reads config from storage. Cheap to call every build: it short-circuits
+  /// unless the stored type/path actually changed, so [File.existsSync] and
+  /// video re-init only run on a real config change.
+  void _resolveConfig() {
+    final storage = sl<StorageService>();
+    final type = storage.pageBgType(widget.pageKey);
+    final path = storage.pageBgFilePath(widget.pageKey);
+
+    if (type == _lastRawType && path == _lastRawPath) return;
+    _lastRawType = type;
+    _lastRawPath = path;
+
+    // Validate file exists, fallback to default.
+    if ((type == 'image' || type == 'video') &&
+        (path == null || !File(path).existsSync())) {
+      _bgType = 'default';
+      _bgFilePath = null;
+    } else {
+      _bgType = type;
+      _bgFilePath = path;
+    }
+
+    if (_bgType == 'video') {
+      _syncVideo(_bgFilePath);
+    } else {
+      _disposeVideo();
+    }
+  }
+
+  void _syncVideo(String? path) {
+    if (_videoControllerPath == path && _videoController != null) return;
+    _disposeVideo();
+    if (path == null) return;
+
+    _videoControllerPath = path;
+    final controller = VideoPlayerController.file(File(path));
+    _videoController = controller;
+    controller.initialize().then((_) {
+      if (!mounted || _videoController != controller) {
+        controller.dispose();
+        return;
+      }
+      controller.setLooping(true);
+      controller.setVolume(0);
+      controller.play();
+      setState(() {});
+    });
+  }
+
+  void _disposeVideo() {
+    _videoController?.dispose();
+    _videoController = null;
+    _videoControllerPath = null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    _resolveConfig();
+
     if (_bgType == 'image' && _bgFilePath != null) {
       return Image.file(
         File(_bgFilePath!),
+        // Key by path so a reused element rebuilds when the file changes.
+        key: ValueKey(_bgFilePath),
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
@@ -75,13 +117,14 @@ class _PageBackgroundState extends State<PageBackground> {
       );
     }
     if (_bgType == 'video') {
-      if (_videoController != null && _videoController!.value.isInitialized) {
+      final controller = _videoController;
+      if (controller != null && controller.value.isInitialized) {
         return FittedBox(
           fit: BoxFit.cover,
           child: SizedBox(
-            width: _videoController!.value.size.width,
-            height: _videoController!.value.size.height,
-            child: VideoPlayer(_videoController!),
+            width: controller.value.size.width,
+            height: controller.value.size.height,
+            child: VideoPlayer(controller),
           ),
         );
       }
