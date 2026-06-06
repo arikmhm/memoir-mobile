@@ -43,7 +43,14 @@ Future<void> initDependencies() async {
   final prefs = await SharedPreferences.getInstance();
   sl.registerSingleton<SharedPreferences>(prefs);
 
-  sl.registerSingleton<FlutterSecureStorage>(const FlutterSecureStorage());
+  // resetOnError: jika ciphertext lama tak bisa didekripsi (mis. setelah
+  // reinstall/restore backup → kunci Keystore berganti, BadPaddingException),
+  // data otomatis di-reset alih-alih melempar PlatformException yang mengunci app.
+  sl.registerSingleton<FlutterSecureStorage>(
+    const FlutterSecureStorage(
+      aOptions: AndroidOptions(resetOnError: true),
+    ),
+  );
 
   // ─── Services ────────────────────────────────────────────────
 

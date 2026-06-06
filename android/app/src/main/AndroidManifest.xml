@@ -20,6 +20,7 @@
     <application
         android:label="memoir_v1"
         android:name="${applicationName}"
+        android:allowBackup="false"
         android:icon="@mipmap/launcher_icon">
         <activity
             android:name=".MainActivity"

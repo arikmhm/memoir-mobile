@@ -34,8 +34,16 @@ class AppCubit extends Cubit<AppState> {
       // Token exists → navigate to startup screen for
       // status check + template sync (FEAT-MR-02)
       emit(const AppStartup());
-    } on Exception catch (e) {
-      emit(AppLocked(reason: 'Startup failed: $e'));
+    } on Exception catch (_) {
+      // Secure storage tak bisa dibaca (mis. ciphertext lama korup setelah
+      // reinstall/restore → BadPaddingException). Jangan kunci app; bersihkan
+      // token korup dan kembali ke pairing agar device bisa di-pair ulang.
+      try {
+        await _storageService.clearDeviceToken();
+      } catch (_) {
+        // ignore — sudah pasti tidak ada token valid
+      }
+      emit(const AppPairing());
     }
   }
 
