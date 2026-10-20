@@ -278,7 +278,6 @@ class ProcessingCubit extends Cubit<ProcessingState> {
         capturedPhotos: _capturedPhotos!,
         hasDigitalCopy: _hasDigitalCopy,
         settings: ProcessingSettings(
-          thermalDensity: _storageService.thermalDensity,
           dither: DitherAlgorithm.fromKey(_storageService.ditherAlgorithm),
           sharpenAmount: _storageService.sharpenAmount,
           brightness: _storageService.brightness,

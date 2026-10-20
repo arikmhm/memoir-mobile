@@ -74,11 +74,6 @@ class PrintWidth {
 /// All values are sendable across isolate boundaries (primitives + enum),
 /// so this object can be passed directly into [Isolate.run] closures.
 class ProcessingSettings {
-  /// Thermal head density level. 0 (lightest) … 8 (darkest), default 2.
-  /// Lower values reduce heat-bleed on skin tones; higher values darken
-  /// faded prints. Maps to ESC/POS `GS ( E fn=5` + `ESC 7` heating time.
-  final int thermalDensity;
-
   /// Dither algorithm — see [DitherAlgorithm].
   final DitherAlgorithm dither;
 
@@ -105,7 +100,6 @@ class ProcessingSettings {
   final int feedLines;
 
   const ProcessingSettings({
-    this.thermalDensity = 2,
     this.dither = DitherAlgorithm.floydSteinberg,
     this.sharpenAmount = 0.25,
     this.brightness = 8.0,
@@ -685,36 +679,14 @@ class CompositeRenderService {
     return img.flipHorizontal(resized);
   }
 
-  /// Build the printer-init bytes (reset + density-setting) for band 0.
+  /// Build the printer-init bytes for band 0.
   ///
-  /// Sent before raster data via two complementary ESC/POS commands so it
-  /// works across both Epson-spec and generic Chinese clones (XPrinter,
-  /// POS-58/80, Goojprt, etc.):
-  ///
-  /// - `GS ( E pL pH fn=5 d` — Epson standard "set print density" (d: 0-8,
-  ///   0 = -50% (lightest), 4 = default, 8 = +50% (darkest)).
-  /// - `ESC 7 n1 n2 n3` — generic Chinese spec "printing parameters"
-  ///   (n2 = heating time in 10µs units; lower = lighter).
-  ///
-  /// Order: `ESC @` (reset) → `GS ( E ... fn=5` → `ESC 7 ...`.
-  /// Both commands are no-ops on printers that don't implement them,
-  /// so sending both maximizes compatibility.
-  static Uint8List _buildInitBytes(int thermalDensity) {
-    final density = thermalDensity.clamp(0, 8);
-    // Heating time → map 0..8 to 50..150 (10µs units)
-    final heatingTime = 50 + (density * 12);
-
-    return Uint8List.fromList([
-      // ESC @ — reset printer
-      0x1B, 0x40,
-      // GS ( E pL=2 pH=0 fn=5 d — Epson "set print density"
-      0x1D, 0x28, 0x45, 0x02, 0x00, 0x05, density,
-      // ESC 7 n1 n2 n3 — generic "set printing parameters"
-      // n1=max heating dots (7 = default, 64 dots),
-      // n2=heating time in 10µs units (lower = lighter),
-      // n3=heating interval (2 = default, 20µs).
-      0x1B, 0x37, 0x07, heatingTime, 0x02,
-    ]);
+  /// Sends only `ESC @` (reset) — the universal ESC/POS command every
+  /// printer implements. Vendor-specific density commands (`GS ( E`,
+  /// `ESC 7`) are intentionally omitted because printers that don't
+  /// implement them desync and print raster data as garbage text.
+  static Uint8List _buildInitBytes() {
+    return Uint8List.fromList([0x1B, 0x40]);
   }
 
   /// Band height for raster encoding.
@@ -738,8 +710,7 @@ class CompositeRenderService {
   /// 4. Band-by-band dithering using selected algorithm (FS or Atkinson)
   /// 5. Pack bits → GS v 0 raster bands
   ///
-  /// All four [ProcessingSettings] fields are applied:
-  /// - [ProcessingSettings.thermalDensity] → ESC/POS init bytes (band 0)
+  /// [ProcessingSettings] fields applied:
   /// - [ProcessingSettings.brightness] → luminance offset (step 2)
   /// - [ProcessingSettings.sharpenAmount] → unsharp mask (step 3)
   /// - [ProcessingSettings.dither] → FS or Atkinson (step 4)
@@ -834,7 +805,7 @@ class CompositeRenderService {
     // arrives. Over USB bulk transfer, data arrivals are <1ms apart;
     // without this separation the GS v 0 bytes arrive before the printer
     // finishes initializing and get printed as random text characters.
-    bands.add(_buildInitBytes(settings.thermalDensity));
+    bands.add(_buildInitBytes());
 
     // Feed + cut tail appended to the last band. Empty when [addCut] is false
     // (the caller will append a terminating band, e.g. the softfile QR).
@@ -1023,7 +994,7 @@ class CompositeRenderService {
     // arrives. Over USB bulk transfer, data arrivals are <1ms apart;
     // without this separation the GS v 0 bytes arrive before the printer
     // finishes initializing and get printed as random text characters.
-    bands.add(_buildInitBytes(settings.thermalDensity));
+    bands.add(_buildInitBytes());
 
     for (var band = 0; band < numBands; band++) {
       final startY = band * _bandHeight;

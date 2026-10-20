@@ -225,16 +225,10 @@ class StorageService {
 
   // Image processing — thermal print tuning.
   // Defaults match the constants previously hardcoded in
-  // CompositeRenderService (density 2, Floyd-Steinberg, sharpen 0.25,
-  // brightness +8).
-  static const _thermalDensityKey = 'processing.thermalDensity';
+  // CompositeRenderService (Floyd-Steinberg, sharpen 0.25, brightness +8).
   static const _ditherAlgorithmKey = 'processing.ditherAlgorithm';
   static const _sharpenAmountKey = 'processing.sharpenAmount';
   static const _brightnessKey = 'processing.brightness';
-
-  int get thermalDensity => _prefs.getInt(_thermalDensityKey) ?? 2;
-  Future<void> setThermalDensity(int level) =>
-      _prefs.setInt(_thermalDensityKey, level.clamp(0, 8));
 
   /// Dither algorithm: 'fs' (Floyd-Steinberg) or 'atkinson'.
   String get ditherAlgorithm =>
@@ -252,13 +246,12 @@ class StorageService {
   Future<void> setBrightness(double value) =>
       _prefs.setDouble(_brightnessKey, value.clamp(-30.0, 30.0));
 
-  /// Reset image-processing tuning to defaults (density 2, FS, sharpen 0.25,
+  /// Reset image-processing tuning to defaults (FS, sharpen 0.25,
   /// brightness +8). Clears overrides so getters fall back to `??` defaults.
   ///
   /// Printer mechanics (paper width, cut mode, feed) are intentionally left
   /// untouched — they describe the hardware, not the image tuning.
   Future<void> resetImageProcessingSettings() async {
-    await _prefs.remove(_thermalDensityKey);
     await _prefs.remove(_ditherAlgorithmKey);
     await _prefs.remove(_sharpenAmountKey);
     await _prefs.remove(_brightnessKey);

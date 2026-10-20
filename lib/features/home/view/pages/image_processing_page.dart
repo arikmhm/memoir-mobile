@@ -75,7 +75,6 @@ class _ImageProcessingBodyState extends State<_ImageProcessingBody> {
   /// Debounce window — also drives the "Menunggu..." indicator duration.
   static const _debounceDuration = Duration(milliseconds: 300);
 
-  late int _density;
   late String _dither;
   late double _sharpen;
   late double _brightness;
@@ -94,7 +93,6 @@ class _ImageProcessingBodyState extends State<_ImageProcessingBody> {
   StorageService get _storage => sl<StorageService>();
 
   ProcessingSettings get _settings => ProcessingSettings(
-        thermalDensity: _density,
         dither: DitherAlgorithm.fromKey(_dither),
         sharpenAmount: _sharpen,
         brightness: _brightness,
@@ -106,7 +104,6 @@ class _ImageProcessingBodyState extends State<_ImageProcessingBody> {
   @override
   void initState() {
     super.initState();
-    _density = _storage.thermalDensity;
     _dither = _storage.ditherAlgorithm;
     _sharpen = _storage.sharpenAmount;
     _brightness = _storage.brightness;
@@ -142,9 +139,9 @@ class _ImageProcessingBodyState extends State<_ImageProcessingBody> {
       builder: (ctx) => AlertDialog(
         title: const Text('Reset Pengaturan?'),
         content: const Text(
-          'Kepekatan, Algoritma Dithering, Ketajaman, dan Kecerahan akan '
+          'Algoritma Dithering, Ketajaman, dan Kecerahan akan '
           'dikembalikan ke nilai default '
-          '(Kepekatan 2, Floyd-Steinberg, Ketajaman 0.25, Kecerahan +8).',
+          '(Floyd-Steinberg, Ketajaman 0.25, Kecerahan +8).',
         ),
         actions: [
           TextButton(
@@ -167,7 +164,6 @@ class _ImageProcessingBodyState extends State<_ImageProcessingBody> {
     await _storage.resetImageProcessingSettings();
     if (!mounted) return;
     setState(() {
-      _density = _storage.thermalDensity;
       _dither = _storage.ditherAlgorithm;
       _sharpen = _storage.sharpenAmount;
       _brightness = _storage.brightness;
@@ -195,7 +191,7 @@ class _ImageProcessingBodyState extends State<_ImageProcessingBody> {
             icon: Icons.image_outlined,
             title: 'Pemrosesan Gambar',
             description:
-                'Atur density, dither, dan brightness untuk hasil cetak thermal.',
+                'Atur dither, kecerahan, dan ketajaman untuk hasil cetak thermal.',
           ),
           const SizedBox(height: AppSpacing.lg),
           _TestPreviewSection(
@@ -204,17 +200,9 @@ class _ImageProcessingBodyState extends State<_ImageProcessingBody> {
           ),
           const SizedBox(height: AppSpacing.md),
           _ControlsCard(
-            density: _density,
             dither: _dither,
             sharpen: _sharpen,
             brightness: _brightness,
-            onDensityChanged: (v) {
-              setState(() => _density = v.round());
-            },
-            onDensityChangeEnd: (v) {
-              _storage.setThermalDensity(v.round());
-              _scheduleRerender();
-            },
             onDitherChanged: (v) {
               setState(() => _dither = v);
               _storage.setDitherAlgorithm(v);
@@ -649,16 +637,13 @@ class _Centered extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// Consolidated controls card — density + dither + sharpen + reset
+// Consolidated controls card — dither + brightness + sharpen + reset
 // ════════════════════════════════════════════════════════════════════
 
 class _ControlsCard extends StatelessWidget {
-  final int density;
   final String dither;
   final double sharpen;
   final double brightness;
-  final ValueChanged<double> onDensityChanged;
-  final ValueChanged<double> onDensityChangeEnd;
   final ValueChanged<String> onDitherChanged;
   final ValueChanged<double> onSharpenChanged;
   final ValueChanged<double> onSharpenChangeEnd;
@@ -667,12 +652,9 @@ class _ControlsCard extends StatelessWidget {
   final VoidCallback onReset;
 
   const _ControlsCard({
-    required this.density,
     required this.dither,
     required this.sharpen,
     required this.brightness,
-    required this.onDensityChanged,
-    required this.onDensityChangeEnd,
     required this.onDitherChanged,
     required this.onSharpenChanged,
     required this.onSharpenChangeEnd,
@@ -688,24 +670,6 @@ class _ControlsCard extends StatelessWidget {
       subtitle: 'Berlaku untuk sesi foto berikutnya.',
       icon: Icons.tune_outlined,
       children: [
-        _ControlGroup(
-          title: 'Kepekatan Cetak',
-          description: 'Ketebalan tinta. Rendah = tipis, tinggi = gelap.',
-          child: _SliderRow(
-            value: density.toDouble(),
-            min: 0,
-            max: 8,
-            divisions: 8,
-            valueLabel: density.toString(),
-            hintLeft: 'Tipis',
-            hintRight: 'Tebal',
-            onChanged: onDensityChanged,
-            onChangeEnd: onDensityChangeEnd,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        const Divider(height: 1, color: AppColors.border),
-        const SizedBox(height: AppSpacing.md),
         _ControlGroup(
           title: 'Algoritma Dithering',
           description:

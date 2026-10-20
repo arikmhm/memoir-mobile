@@ -115,7 +115,6 @@ void main() {
     when(() => mockStorageService.isEventMode).thenReturn(false);
 
     // Default processing settings — match service defaults.
-    when(() => mockStorageService.thermalDensity).thenReturn(2);
     when(() => mockStorageService.ditherAlgorithm).thenReturn('fs');
     when(() => mockStorageService.sharpenAmount).thenReturn(0.25);
     when(() => mockStorageService.brightness).thenReturn(8.0);
